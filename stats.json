@@ -1,0 +1,11 @@
+{
+  "SERVER_ID": {
+    "tickets_abiertos": 0,
+    "tickets_cerrados": 0,
+    "tiempos_respuesta": [],
+    "tiempos_cierre": [],
+    "staff_activity": {},
+    "staff_ratings": {},
+    "tipos": {}
+  }
+}

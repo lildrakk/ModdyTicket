@@ -1,0 +1,43 @@
+{
+    "1477400323445227662": {
+        "1": {
+            "staff_roles": [
+                1477400817144430713,
+                1477744498166468979
+            ],
+            "categoria_id": 1477400323445227663,
+            "logs_id": 1477767691782852770,
+            "valoraciones_id": 1477767728461774920,
+            "razon_obligatoria": true
+        },
+        "2": {
+            "staff_roles": [],
+            "categoria_id": null,
+            "logs_id": null,
+            "valoraciones_id": null,
+            "razon_obligatoria": true,
+            "notificar_habilitado": true,
+            "notificar_cooldown": 5
+        }
+    },
+    "1476707837294940372": {
+        "1": {
+            "staff_roles": [],
+            "categoria_id": null,
+            "logs_id": null,
+            "valoraciones_id": null,
+            "razon_obligatoria": true,
+            "notificar_habilitado": true,
+            "notificar_cooldown": 5
+        },
+        "2": {
+            "staff_roles": [],
+            "categoria_id": null,
+            "logs_id": null,
+            "valoraciones_id": null,
+            "razon_obligatoria": true,
+            "notificar_habilitado": true,
+            "notificar_cooldown": 5
+        }
+    }
+}

@@ -1,0 +1,20 @@
+{
+    "TOKEN": "MTQ2ODI2NjcxNTMyMTQ2NzA4NQ.GK3W5l._VL183s681hsjHyClPYsTEtjfzMxdfEXIJaWr0",
+    "CANAL_LOGS": null,
+    "ROLES_STAFF": [],
+    "CATEGORIAS": {
+        "default": 1476719346960306196
+    },
+    "COOLDOWN_MINUTOS": 5,
+    "BLACKLIST": [],
+    "TICKET_CONFIG": {
+        "default": {
+            "titulo": "\ud83c\udfab Ticket abierto",
+            "mensaje": "Describe tu caso con detalle.",
+            "color": "#00ff99",
+            "ping_staff": true,
+            "prefijo": "ticket"
+        }
+    },
+    "LOG_CHANNEL": 1476707837941125152
+}

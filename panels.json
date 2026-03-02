@@ -1,0 +1,55 @@
+{
+    "1477260316483129620": {
+        "4": {
+            "titulo": "Prueba",
+            "descripcion": "jajajja",
+            "color": "k",
+            "botones": [
+                {
+                    "label": "u",
+                    "emoji": ",\u2764\ufe0f",
+                    "value": "p"
+                },
+                {
+                    "label": "Soporte",
+                    "emoji": "\ud83d\udd30",
+                    "value": "Soporte"
+                }
+            ]
+        },
+        "1": {
+            "titulo": "Pruebaaa",
+            "descripcion": "jajjaja",
+            "color": "#5865F2",
+            "botones": []
+        },
+        "8": {
+            "titulo": "\ud83c\udfab Panel de Tickets",
+            "descripcion": "Pulsa un bot\u00f3n para abrir un ticket.",
+            "color": "#5865F2",
+            "botones": [
+                {
+                    "label": "verificaci\u00f3n",
+                    "emoji": "\u2705",
+                    "value": "verificaci\u00f3n"
+                }
+            ]
+        }
+    },
+    "1477400323445227662": {
+        "1": {
+            "titulo": "\ud83c\udfab Panel de Tickets",
+            "descripcion": "Pulsa un bot\u00f3n para abrir un ticket.",
+            "color": "#5865F2",
+            "botones": [],
+            "menu": [
+                {
+                    "label": "Soporte",
+                    "descripcion": "Abre un ticket si necesitas ayuda",
+                    "emoji": "\ud83d\udd30",
+                    "value": "soporte"
+                }
+            ]
+        }
+    }
+}
