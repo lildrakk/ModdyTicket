@@ -1,0 +1,73 @@
+{
+    "1478441870689566832": {
+        "1": {
+            "titulo": "u",
+            "descripcion": "u",
+            "color": "#3498db",
+            "botones": [
+                {
+                    "label": "soporte",
+                    "emoji": "📝"
+                }
+            ],
+            "menu": []
+        }
+    },
+    "1464575509785612380": {
+        "1": {
+            "titulo": "🎫 ¡Abre un ticket de soporte!",
+            "descripcion": "**Si necesitas ayuda, soporte o tienes dudas sobre nuestros servicios‼️\n¡no te preocupes! Simplemente abre un ticket🎫\n y nuestro equipo se encargará de ti lo antes posible.**✔️",
+            "color": "#3498db",
+            "botones": [
+                {
+                    "label": "Soporte 🛡️",
+                    "emoji": null
+                },
+                {
+                    "label": "Reporte",
+                    "emoji": "🚫"
+                },
+                {
+                    "label": "Postulacion Staff",
+                    "emoji": "📋"
+                },
+                {
+                    "label": "Otro",
+                    "emoji": "💬"
+                }
+            ],
+            "menu": []
+        },
+        "78": {
+            "titulo": "u",
+            "descripcion": "u",
+            "color": "#3498db",
+            "botones": [],
+            "menu": []
+        },
+        "9": {
+            "titulo": "¡ Abre Un Ticket!",
+            "descripcion": "**Si necesitas ayuda, soporte o tienes dudas sobre nuestros servicios‼️\n¡no te preocupes! Simplemente abre un ticket🎫\n y nuestro equipo se encargará de ti lo antes posible.**✔️",
+            "color": "#00FFFF",
+            "botones": [
+                {
+                    "label": "Soporte 🛡️",
+                    "emoji": "🛡️"
+                },
+                {
+                    "label": "Reporte",
+                    "emoji": "🚫"
+                },
+                {
+                    "label": "Postulacion Staff",
+                    "emoji": "📋"
+                },
+                {
+                    "label": "Otro",
+                    "emoji": "💬"
+                }
+            ],
+            "menu": []
+        }
+    }
+    }
