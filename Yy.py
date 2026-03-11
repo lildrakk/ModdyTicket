@@ -57,7 +57,7 @@ class SelectRolesStaff(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()  # ← ARREGLADO (sin efímero)
 
         if self.values[0] == "0":
             return await interaction.followup.send("❌ No hay roles válidos.", ephemeral=True)
@@ -71,7 +71,6 @@ class SelectRolesStaff(discord.ui.Select):
         await interaction.followup.send("✔ Roles staff actualizados.", ephemeral=True)
 
         self.values.clear()
-        
 
 
 class VistaRolesStaff(discord.ui.View):
@@ -103,7 +102,7 @@ class SelectCategoria(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()  # ← ARREGLADO
 
         if self.values[0] == "0":
             return await interaction.followup.send("❌ No hay categorías válidas.", ephemeral=True)
@@ -117,8 +116,6 @@ class SelectCategoria(discord.ui.Select):
         await interaction.followup.send("✔ Categoría actualizada.", ephemeral=True)
 
         self.values.clear()
-        # ❌ ESTA ES LA LÍNEA QUE DEBES QUITAR
-        # await interaction.message.edit(view=self.view)
 
 
 class VistaCategoria(discord.ui.View):
@@ -150,7 +147,7 @@ class SelectLogs(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()  # ← ARREGLADO
 
         if self.values[0] == "0":
             return await interaction.followup.send("❌ No hay canales válidos.", ephemeral=True)
@@ -164,7 +161,6 @@ class SelectLogs(discord.ui.Select):
         await interaction.followup.send("✔ Canal de logs actualizado.", ephemeral=True)
 
         self.values.clear()
-        
 
 
 class VistaLogs(discord.ui.View):
@@ -191,7 +187,7 @@ class SelectValoraciones(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()  # ← ARREGLADO
 
         if self.values[0] == "0":
             return await interaction.followup.send("❌ No hay canales válidos.", ephemeral=True)
@@ -203,11 +199,10 @@ class SelectValoraciones(discord.ui.Select):
         await interaction.followup.send("✔ Canal de valoraciones actualizado.", ephemeral=True)
 
         self.values.clear()
-        
 
 
 
-      
+
 # ============================================================
 #   BOTONES DEL TICKET (PERSISTENTES)
 # ============================================================
@@ -359,52 +354,6 @@ class BotonNotificar(discord.ui.Button):
 
 
 # ============================================================
-#   BOTÓN CERRAR DEFINITIVO
-# ============================================================
-
-class BotonCerrarDefinitivo(discord.ui.Button):
-    def __init__(self, disabled: bool = False):
-        super().__init__(
-            label="⚠️ Cerrar Definitivamente",
-            style=discord.ButtonStyle.danger,
-            custom_id="cerrar_definitivo_v1",
-            disabled=disabled
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-
-        await interaction.response.defer(ephemeral=True)
-
-        canal = interaction.channel
-        canal_id = str(canal.id)
-        usuario = interaction.user
-        guild = interaction.guild
-
-        tickets = load_json(TICKETS_PATH)
-        ticket_data = tickets.get(canal_id)
-
-        if not ticket_data:
-            return await interaction.followup.send("❌ No se encontró información del ticket.", ephemeral=True)
-
-        logs_cog = interaction.client.get_cog("Logs")
-        if logs_cog:
-            await logs_cog.enviar_log(
-                guild=guild,
-                canal_ticket=canal,
-                ticket_data=ticket_data,
-                razon_cierre="Cierre definitivo",
-                cerrado_por=usuario
-            )
-
-        del tickets[canal_id]
-        save_json(TICKETS_PATH, tickets)
-
-        await interaction.followup.send("✔ Ticket cerrado definitivamente.", ephemeral=True)
-
-        await canal.delete(reason=f"Ticket cerrado por {usuario}")
-
-
-# ============================================================
 #   VISTA TICKET (PERSISTENTE)
 # ============================================================
 
@@ -417,16 +366,6 @@ class VistaTicket(discord.ui.View):
 
         if config.get("notificar_habilitado", True):
             self.add_item(BotonNotificar())
-
-
-# ============================================================
-#   VISTA FINAL DE CIERRE DEFINITIVO
-# ============================================================
-
-class VistaCierreFinal(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(BotonCerrarDefinitivo())
 
 
 # ============================================================
@@ -611,8 +550,7 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
         await interaction.response.send_message(
             "⭐ ¡Gracias por tu valoración!",
             ephemeral=True
-      )
-
+        )
 
 
 # ============================================================
@@ -664,7 +602,7 @@ class BotonConfigCategoria(discord.ui.Button):
         await interaction.response.send_message(
             "Selecciona la categoría donde se crearán los tickets:",
             view=VistaCategoria(self.cog, self.panel_id, categorias),
-            ephemeral=True
+            ephemeral=False
         )
 
 
@@ -794,44 +732,6 @@ class BotonCambiarCooldown(discord.ui.Button):
 
 
 # ============================================================
-#   MODAL PARA CAMBIAR COOLDOWN
-# ============================================================
-
-class CooldownModal(discord.ui.Modal, title="Cambiar Cooldown"):
-
-    cooldown = discord.ui.TextInput(
-        label="Nuevo cooldown (minutos)",
-        placeholder="Ej: 5",
-        required=True
-    )
-
-    def __init__(self, cog, panel_id, guild_id):
-        super().__init__()
-        self.cog = cog
-        self.panel_id = panel_id
-        self.guild_id = guild_id
-
-    async def on_submit(self, interaction: discord.Interaction):
-
-        try:
-            nuevo_cooldown = int(self.cooldown.value)
-        except:
-            return await interaction.response.send_message(
-                "❌ Debes poner un número.",
-                ephemeral=True
-            )
-
-        config = self.cog.get_config(self.guild_id, self.panel_id)
-        config["notificar_cooldown"] = nuevo_cooldown
-        self.cog.save_config()
-
-        await interaction.response.send_message(
-            f"✔ Cooldown actualizado a {nuevo_cooldown} minutos.",
-            ephemeral=True
-        )
-
-
-# ============================================================
 #   VISTA CONFIG (PERSISTENTE)
 # ============================================================
 
@@ -905,9 +805,8 @@ def generar_embed_config(guild, config):
     return embed
 
 
-
 # ============================================================
-#   COMANDO /ticket_config
+#   COMANDO /ticket_config (ARREGLADO)
 # ============================================================
 
 @app_commands.command(name="ticket_config", description="Configura un panel de tickets.")
@@ -921,6 +820,7 @@ async def ticket_config(interaction: discord.Interaction, panel_id: int):
             ephemeral=True
         )
 
+    # Mensaje inicial efímero (no se edita desde selects)
     await interaction.response.send_message("Cargando configuración...", ephemeral=True)
 
     config = cog.get_config(interaction.guild.id, panel_id)
@@ -928,11 +828,13 @@ async def ticket_config(interaction: discord.Interaction, panel_id: int):
     embed = generar_embed_config(interaction.guild, config)
     view = VistaConfig(cog, panel_id, interaction.guild.id)
 
+    # Editamos SOLO este mensaje, no los efímeros de selects
     await interaction.edit_original_response(
         content=None,
         embed=embed,
         view=view
-    )
+        )
+
 
 
 # ============================================================
@@ -971,9 +873,9 @@ class Tickets(commands.Cog):
     def save_config(self):
         save_json(CONFIG_PATH, self.config)
 
-    # ------------------------------
-    #   CREAR TICKET (CORREGIDO)
-    # ------------------------------
+    # ============================================================
+    #   CREAR TICKET (MEJORADO + STAFF MENCIONADO FUERA DEL EMBED)
+    # ============================================================
 
     async def crear_ticket(self, interaction: discord.Interaction, panel_id=None, label=None, emoji=None):
 
@@ -1020,15 +922,25 @@ class Tickets(commands.Cog):
         }
         save_json(TICKETS_PATH, tickets)
 
+        # ============================
+        #   STAFF MENCIONADO FUERA DEL EMBED
+        # ============================
+
         roles_staff = [guild.get_role(r) for r in config["staff_roles"] if guild.get_role(r)]
-        menciones = " ".join(r.mention for r in roles_staff) if roles_staff else ""
+        menciones_staff = " ".join(r.mention for r in roles_staff) if roles_staff else "—"
+
+        if menciones_staff != "—":
+            await canal.send(f"🔔 **Staff notificado:** {menciones_staff}")
+
+        # ============================
+        #   EMBED PRINCIPAL DEL TICKET
+        # ============================
 
         embed = discord.Embed(
             title="🎫 Nuevo ticket abierto",
             description=(
                 f"👤 **Usuario:** {user.mention}\n"
-                f"📌 **Tipo:** {emoji or ''} {label or 'Ticket'}\n"
-                f"🔔 **Staff notificado:** {menciones or '—'}"
+                f"📌 **Tipo:** {emoji or ''} {label or 'Ticket'}"
             ),
             color=discord.Color.green()
         )
@@ -1041,9 +953,9 @@ class Tickets(commands.Cog):
             ephemeral=True
         )
 
-    # ------------------------------
+    # ============================================================
     #   CIERRE DEFINITIVO
-    # ------------------------------
+    # ============================================================
 
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
 
@@ -1073,9 +985,9 @@ class Tickets(commands.Cog):
 
         await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
 
-    # ------------------------------
-    #   TRACKING DE MENSAJES
-    # ------------------------------
+    # ============================================================
+    #   TRACKING DE MENSAJES (PARA SABER QUIÉN PARTICIPÓ)
+    # ============================================================
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -1107,4 +1019,4 @@ async def setup(bot: commands.Bot):
 
     bot.add_view(VistaCierreFinal())
 
-    print("[Tickets] Sistema de tickets cargado correctamente.") 
+    print("[Tickets] Sistema de tickets cargado correctamente.")
