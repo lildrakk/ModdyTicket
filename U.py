@@ -74,7 +74,6 @@ class BotonPanel(discord.ui.Button):
         if not cog:
             return await interaction.response.send_message("❌ Sistema de tickets no cargado.", ephemeral=True)
 
-        # Crear ticket (crear_ticket ya responde)
         await cog.crear_ticket(
             interaction,
             panel_id=self.panel_id,
@@ -165,6 +164,7 @@ class Panels(commands.Cog):
     #   PANEL CREAR
     # ============================================================
 
+    @app_commands.guild_only()
     @app_commands.command(name="panel_crear", description="Crea un panel vacío para configurarlo.")
     async def panel_crear(self, interaction: discord.Interaction, panel_id: int, titulo: str, descripcion: str, color: str = "#3498db"):
         data = cargar_paneles()
@@ -196,6 +196,7 @@ class Panels(commands.Cog):
     #   AÑADIR BOTÓN
     # ============================================================
 
+    @app_commands.guild_only()
     @app_commands.command(name="panel_boton", description="Añade un botón al panel.")
     async def panel_boton(self, interaction: discord.Interaction, panel_id: int, etiqueta: str, emoji: str = None, valor: str = None):
         data = cargar_paneles()
@@ -218,6 +219,7 @@ class Panels(commands.Cog):
     #   BORRAR BOTÓN
     # ============================================================
 
+    @app_commands.guild_only()
     @app_commands.command(name="panel_boton_borrar", description="Borra un botón del panel.")
     async def panel_boton_borrar(self, interaction: discord.Interaction, panel_id: int, valor: str):
         data = cargar_paneles()
@@ -242,6 +244,7 @@ class Panels(commands.Cog):
     #   AÑADIR OPCIÓN AL MENÚ
     # ============================================================
 
+    @app_commands.guild_only()
     @app_commands.command(name="panel_menu", description="Añade una opción al menú del panel.")
     async def panel_menu(self, interaction: discord.Interaction, panel_id: int, etiqueta: str, descripcion: str, emoji: str = None, valor: str = None):
         data = cargar_paneles()
@@ -265,6 +268,7 @@ class Panels(commands.Cog):
     #   BORRAR OPCIÓN DEL MENÚ
     # ============================================================
 
+    @app_commands.guild_only()
     @app_commands.command(name="panel_menu_borrar", description="Borra una opción del menú.")
     async def panel_menu_borrar(self, interaction: discord.Interaction, panel_id: int, valor: str):
         data = cargar_paneles()
@@ -289,6 +293,7 @@ class Panels(commands.Cog):
     #   ENVIAR PANEL CON MENÚ
     # ============================================================
 
+    @app_commands.guild_only()
     @app_commands.command(name="panel_menu_enviar", description="Envía un panel con menú select.")
     async def panel_menu_enviar(self, interaction: discord.Interaction, panel_id: int):
         panel = self.obtener_panel(interaction.guild.id, panel_id)
@@ -314,6 +319,7 @@ class Panels(commands.Cog):
     #   LISTAR PANELES
     # ============================================================
 
+    @app_commands.guild_only()
     @app_commands.command(name="panel_listar", description="Lista los paneles.")
     async def panel_listar(self, interaction: discord.Interaction):
         data = cargar_paneles()
@@ -329,6 +335,7 @@ class Panels(commands.Cog):
     #   BORRAR PANEL
     # ============================================================
 
+    @app_commands.guild_only()
     @app_commands.command(name="panel_borrar", description="Elimina un panel existente.")
     async def panel_borrar(self, interaction: discord.Interaction, panel_id: int):
         data = cargar_paneles()
@@ -350,6 +357,7 @@ class Panels(commands.Cog):
     #   ENVIAR PANEL CON BOTONES
     # ============================================================
 
+    @app_commands.guild_only()
     @app_commands.command(name="panel_enviar", description="Envía un panel con botones.")
     async def panel_enviar(self, interaction: discord.Interaction, panel_id: int):
         panel = self.obtener_panel(interaction.guild.id, panel_id)
@@ -379,11 +387,10 @@ async def setup(bot):
 
     data = cargar_paneles()
 
-    # Registrar vistas persistentes
     for guild_id, guild_panels in data.items():
         for panel_id, panel in guild_panels.items():
 
             bot.add_view(VistaPanel(panel_id, panel))
 
             if "menu" in panel and panel["menu"]:
-                bot.add_view(VistaPanelMenu(panel_id, panel["menu"]))
+                bot.add_view(VistaPanelMenu(panel_id, panel["menu"])) 
