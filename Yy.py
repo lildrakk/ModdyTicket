@@ -71,7 +71,7 @@ class SelectRolesStaff(discord.ui.Select):
         await interaction.followup.send("✔ Roles staff actualizados.", ephemeral=True)
 
         self.values.clear()
-        await interaction.message.edit(view=self.view)
+        
 
 
 class VistaRolesStaff(discord.ui.View):
@@ -164,7 +164,7 @@ class SelectLogs(discord.ui.Select):
         await interaction.followup.send("✔ Canal de logs actualizado.", ephemeral=True)
 
         self.values.clear()
-        await interaction.message.edit(view=self.view)
+        
 
 
 class VistaLogs(discord.ui.View):
@@ -203,7 +203,7 @@ class SelectValoraciones(discord.ui.Select):
         await interaction.followup.send("✔ Canal de valoraciones actualizado.", ephemeral=True)
 
         self.values.clear()
-        await interaction.message.edit(view=self.view)
+        
 
 
 
