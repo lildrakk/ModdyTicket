@@ -641,7 +641,7 @@ class BotonConfigRoles(discord.ui.Button):
         await interaction.response.send_message(
             "Selecciona los roles staff:",
             view=VistaRolesStaff(self.cog, self.panel_id, roles),
-            ephemeral=True
+            ephemeral=False
         )
 
 
@@ -690,7 +690,7 @@ class BotonConfigLogs(discord.ui.Button):
         await interaction.response.send_message(
             "Selecciona el canal de logs:",
             view=VistaLogs(self.cog, self.panel_id, canales),
-            ephemeral=True
+            ephemeral=False
         )
 
 
@@ -720,7 +720,7 @@ class BotonConfigValoraciones(discord.ui.Button):
         await interaction.response.send_message(
             "Selecciona el canal donde se enviarán las valoraciones:",
             view=view,
-            ephemeral=True
+            ephemeral=False
         )
 
 
