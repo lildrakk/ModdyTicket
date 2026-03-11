@@ -117,7 +117,8 @@ class SelectCategoria(discord.ui.Select):
         await interaction.followup.send("✔ Categoría actualizada.", ephemeral=True)
 
         self.values.clear()
-        await interaction.message.edit(view=self.view)
+        # ❌ ESTA ES LA LÍNEA QUE DEBES QUITAR
+        # await interaction.message.edit(view=self.view)
 
 
 class VistaCategoria(discord.ui.View):
@@ -824,10 +825,10 @@ class CooldownModal(discord.ui.Modal, title="Cambiar Cooldown"):
         config["notificar_cooldown"] = nuevo_cooldown
         self.cog.save_config()
 
-        nuevo_embed = generar_embed_config(interaction.guild, config)
-        nueva_vista = VistaConfig(self.cog, self.panel_id, self.guild_id)
-
-        await interaction.response.edit_message(embed=nuevo_embed, view=nueva_vista)
+        await interaction.response.send_message(
+            f"✔ Cooldown actualizado a {nuevo_cooldown} minutos.",
+            ephemeral=True
+        )
 
 
 # ============================================================
