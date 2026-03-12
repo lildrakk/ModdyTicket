@@ -31,7 +31,75 @@ def save_json(path, data):
         json.dump(data, f, indent=4)
 
 
-            
+
+
+
+# ============================================================
+#   NUEVO COMANDO /ticket_config (CON OPCIONES)
+# ============================================================
+
+@app_commands.command(name="ticket_config", description="Configura un panel de tickets.")
+@app_commands.describe(
+    panel_id="ID del panel que quieres configurar",
+    roles_staff="Selecciona los roles de staff",
+    categoria="Selecciona la categoría donde se crearán los tickets",
+    logs="Selecciona el canal de logs",
+    valoraciones="Selecciona el canal de valoraciones",
+    razon_obligatoria="¿El usuario debe escribir una razón obligatoria?",
+    notificar_staff="¿Activar o desactivar el botón de notificar staff?",
+    cooldown="Cooldown en minutos para notificar staff"
+)
+async def ticket_config(
+    interaction: discord.Interaction,
+    panel_id: int,
+    roles_staff: list[discord.Role] | None = None,
+    categoria: discord.CategoryChannel | None = None,
+    logs: discord.TextChannel | None = None,
+    valoraciones: discord.TextChannel | None = None,
+    razon_obligatoria: bool | None = None,
+    notificar_staff: bool | None = None,
+    cooldown: int | None = None
+):
+
+    cog: "Tickets" = interaction.client.get_cog("Tickets")
+    if not cog:
+        return await interaction.response.send_message(
+            "❌ El sistema de tickets no está cargado.",
+            ephemeral=True
+        )
+
+    config = cog.get_config(interaction.guild.id, panel_id)
+
+    # Guardar cada campo solo si el usuario lo envió
+    if roles_staff is not None:
+        config["staff_roles"] = [r.id for r in roles_staff]
+
+    if categoria is not None:
+        config["categoria_id"] = categoria.id
+
+    if logs is not None:
+        config["logs_id"] = logs.id
+
+    if valoraciones is not None:
+        config["valoraciones_id"] = valoraciones.id
+
+    if razon_obligatoria is not None:
+        config["razon_obligatoria"] = razon_obligatoria
+
+    if notificar_staff is not None:
+        config["notificar_habilitado"] = notificar_staff
+
+    if cooldown is not None:
+        config["notificar_cooldown"] = cooldown
+
+    cog.save_config()
+
+    await interaction.response.send_message(
+        f"✔ Configuración del panel **{panel_id}** actualizada correctamente.",
+        ephemeral=True
+    )
+
+
 # ============================================================
 #   BOTONES DEL TICKET (PERSISTENTES)
 # ============================================================
@@ -385,79 +453,8 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
 
 
 
-        
 
-
-# ============================================================
-#   BOTÓN ACTIVAR / DESACTIVAR NOTIFICAR STAFF
-# ============================================================
-
-class BotonToggleNotificar(discord.ui.Button):
-    def __init__(self, cog, panel_id, guild_id):
-        super().__init__(
-            label="🔔 Activar/Desactivar Notificar",
-            style=discord.ButtonStyle.primary
-        )
-        self.cog = cog
-        self.panel_id = panel_id
-        self.guild_id = guild_id
-
-    async def callback(self, interaction: discord.Interaction):
-
-        config = self.cog.get_config(self.guild_id, self.panel_id)
-
-        config["notificar_habilitado"] = not config.get("notificar_habilitado", True)
-        self.cog.save_config()
-
-        nuevo_embed = generar_embed_config(interaction.guild, config)
-        nueva_vista = VistaConfig(self.cog, self.panel_id, self.guild_id)
-
-        await interaction.response.edit_message(embed=nuevo_embed, view=nueva_vista)
-
-
-# ============================================================
-#   BOTÓN CAMBIAR COOLDOWN
-# ============================================================
-
-class BotonCambiarCooldown(discord.ui.Button):
-    def __init__(self, cog, panel_id, guild_id):
-        super().__init__(
-            label="⏱ Cambiar Cooldown",
-            style=discord.ButtonStyle.secondary
-        )
-        self.cog = cog
-        self.panel_id = panel_id
-        self.guild_id = guild_id
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(
-            CooldownModal(self.cog, self.panel_id, self.guild_id)
-        )
-
-
-# ============================================================
-#   VISTA CONFIG (PERSISTENTE)
-# ============================================================
-
-class VistaConfig(discord.ui.View):
-    def __init__(self, cog, panel_id, guild_id):
-        super().__init__(timeout=None)
-        self.cog = cog
-        self.panel_id = panel_id
-        self.guild_id = guild_id
-
-        self.add_item(BotonConfigRoles(cog, panel_id))
-        self.add_item(BotonConfigCategoria(cog, panel_id))
-        self.add_item(BotonConfigLogs(cog, panel_id))
-        self.add_item(BotonConfigValoraciones(cog, panel_id))
-        self.add_item(BotonConfigRazon(cog, panel_id))
-
-        self.add_item(BotonToggleNotificar(cog, panel_id, guild_id))
-        self.add_item(BotonCambiarCooldown(cog, panel_id, guild_id))
-
-
-# ============================================================
-#   GENERADOR DE EMBED DE CONFIG
+ 0 pE EMBED DE CONFIG
 # ============================================================
 
 def generar_embed_config(guild, config):
@@ -496,46 +493,7 @@ def generar_embed_config(guild, config):
         inline=False
     )
     embed.add_field(
-        name="Notificar staff",
-        value=estado_notificar,
-        inline=False
-    )
-    embed.add_field(
-        name="Cooldown de notificación",
-        value=f"{cooldown} minutos",
-        inline=False
-    )
 
-    return embed
-
-
-# ============================================================
-#   COMANDO /ticket_config (ARREGLADO 100%)
-# ============================================================
-
-@app_commands.command(name="ticket_config", description="Configura un panel de tickets.")
-@app_commands.describe(panel_id="ID del panel que quieres configurar")
-async def ticket_config(interaction: discord.Interaction, panel_id: int):
-
-    cog: "Tickets" = interaction.client.get_cog("Tickets")
-    if not cog:
-        return await interaction.response.send_message(
-            "❌ El sistema de tickets no está cargado.",
-            ephemeral=True
-        )
-
-    await interaction.response.send_message("Cargando configuración...")
-
-    config = cog.get_config(interaction.guild.id, panel_id)
-
-    embed = generar_embed_config(interaction.guild, config)
-    view = VistaConfig(cog, panel_id, interaction.guild.id)
-
-    await interaction.edit_original_response(
-        content=None,
-        embed=embed,
-        view=view
-    )
 
 
 # ============================================================
