@@ -31,20 +31,17 @@ def save_json(path, data):
         json.dump(data, f, indent=4)
 
 
-
-
-
 # ============================================================
-#   NUEVO COMANDO /ticket_config (CON OPCIONES)
+#   NUEVO COMANDO /ticket_config (CORREGIDO)
 # ============================================================
 
 @app_commands.command(name="ticket_config", description="Configura un panel de tickets.")
 @app_commands.describe(
     panel_id="ID del panel que quieres configurar",
-    roles_staff="Selecciona los roles de staff",
-    categoria="Selecciona la categoría donde se crearán los tickets",
-    logs="Selecciona el canal de logs",
-    valoraciones="Selecciona el canal de valoraciones",
+    roles_staff="Rol del staff (ejecuta varias veces para añadir más)",
+    categoria="Categoría donde se crearán los tickets",
+    logs="Canal donde se enviarán los logs",
+    valoraciones="Canal donde se enviarán las valoraciones",
     razon_obligatoria="¿El usuario debe escribir una razón obligatoria?",
     notificar_staff="¿Activar o desactivar el botón de notificar staff?",
     cooldown="Cooldown en minutos para notificar staff"
@@ -52,7 +49,7 @@ def save_json(path, data):
 async def ticket_config(
     interaction: discord.Interaction,
     panel_id: int,
-    roles_staff: list[discord.Role] | None = None,
+    roles_staff: discord.Role | None = None,
     categoria: discord.CategoryChannel | None = None,
     logs: discord.TextChannel | None = None,
     valoraciones: discord.TextChannel | None = None,
@@ -70,9 +67,14 @@ async def ticket_config(
 
     config = cog.get_config(interaction.guild.id, panel_id)
 
-    # Guardar cada campo solo si el usuario lo envió
+    # ------------------------------
+    #   GUARDAR CAMPOS
+    # ------------------------------
+
+    # Añadir rol staff (uno por comando)
     if roles_staff is not None:
-        config["staff_roles"] = [r.id for r in roles_staff]
+        if roles_staff.id not in config["staff_roles"]:
+            config["staff_roles"].append(roles_staff.id)
 
     if categoria is not None:
         config["categoria_id"] = categoria.id
@@ -97,7 +99,8 @@ async def ticket_config(
     await interaction.response.send_message(
         f"✔ Configuración del panel **{panel_id}** actualizada correctamente.",
         ephemeral=True
-    )
+        ) 
+
 
 
 # ============================================================
@@ -240,7 +243,7 @@ class BotonNotificar(discord.ui.Button):
         await interaction.channel.send(f"{creador.mention} {menciones_staff}")
 
         embed = discord.Embed(
-            title="🔔 Staff notificado 🔔",
+            title="🔔 Staff notificado",
             description=f"{creador.mention}\nEl staff ha sido notificado.",
             color=discord.Color.orange()
         )
@@ -329,9 +332,16 @@ class SelectStaff(discord.ui.Select):
 
         await interaction.followup.send("✔ Staff registrado.", ephemeral=True)
 
+        # ------------------------------
+        #   FIX IMPORTANTE
+        # ------------------------------
+        # El botón NO acepta parámetros → ahora se añade correctamente
+        boton = BotonCerrarDefinitivo()
+        boton.disabled = False
+
         view = discord.ui.View(timeout=None)
         view.add_item(MenuValoracion(self.cog, self.canal_id))
-        view.add_item(BotonCerrarDefinitivo(disabled=False))
+        view.add_item(boton)
 
         await interaction.channel.send(
             "⭐ Selecciona la valoración:",
@@ -340,7 +350,7 @@ class SelectStaff(discord.ui.Select):
 
 
 # ============================================================
-#   VALORACIÓN (1–5 ESTRELLAS + COMENTARIO OPCIONAL)
+#   VALORACIÓN (1–5 ESTRELLAS + COMENTARIO)
 # ============================================================
 
 class MenuValoracion(discord.ui.Select):
@@ -404,6 +414,7 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
         if self.canal_id not in ratings:
             ratings[self.canal_id] = []
 
+        # Guardar comentario en la última valoración sin comentario
         for r in ratings[self.canal_id]:
             if (
                 r["usuario_id"] == interaction.user.id
@@ -415,6 +426,7 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
 
         save_json(RATINGS_PATH, ratings)
 
+        # Enviar valoración al canal configurado
         tickets = load_json(TICKETS_PATH)
         ticket = tickets.get(self.canal_id)
 
@@ -444,62 +456,14 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
 
                     await canal_val.send(embed=embed)
 
+        # ------------------------------
+        #   MENSAJE FINAL AL USUARIO
+        # ------------------------------
         await interaction.response.send_message(
             "⭐ ¡Gracias por tu valoración!",
             ephemeral=True
         )
 
-
-
-
-# ============================================================
-#   MODAL PARA RAZÓN DE CIERRE
-# ============================================================
-
-class ModalRazonCierre(discord.ui.Modal, title="Razón del cierre"):
-    razon = discord.ui.TextInput(
-        label="Escribe la razón del cierre",
-        style=discord.TextStyle.paragraph,
-        required=True,
-        max_length=300
-    )
-
-    def __init__(self, cog, interaction):
-        super().__init__()
-        self.cog = cog
-        self.interaction = interaction
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await self.cog.cerrar_definitivo(self.interaction, self.razon.value)
-        await interaction.response.send_message("✔ Ticket cerrado correctamente.", ephemeral=True)
-
-
-# ============================================================
-#   BOTÓN CIERRE DEFINITIVO (ABRE MODAL)
-# ============================================================
-
-class BotonCerrarDefinitivo(discord.ui.Button):
-    def __init__(self):
-        super().__init__(
-            label="⚠️ Cerrar Definitivamente",
-            style=discord.ButtonStyle.danger,
-            custom_id="cerrar_definitivo_v1"
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        cog = interaction.client.get_cog("Tickets")
-        modal = ModalRazonCierre(cog, interaction)
-        await interaction.response.send_modal(modal)
-
-
-# ============================================================
-#   VISTA FINAL DE CIERRE DEFINITIVO (PERSISTENTE)
-# ============================================================
-
-class VistaCierreFinal(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(BotonCerrarDefinitivo())
 
 
 # ============================================================
@@ -677,6 +641,3 @@ async def setup(bot: commands.Bot):
     bot.add_view(VistaCierreFinal())
 
     print("[Tickets] Sistema de tickets cargado correctamente.")
-
-    
-
