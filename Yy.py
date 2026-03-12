@@ -818,8 +818,6 @@ async def ticket_config(interaction: discord.Interaction, panel_id: int):
             ephemeral=True
         )
 
-    # ⚠️ IMPORTANTE:
-    # Quitamos efímero → evita interacción fallida con selects
     await interaction.response.send_message("Cargando configuración...")
 
     config = cog.get_config(interaction.guild.id, panel_id)
@@ -831,8 +829,57 @@ async def ticket_config(interaction: discord.Interaction, panel_id: int):
         content=None,
         embed=embed,
         view=view
-                )
+    )
 
+
+# ============================================================
+#   MODAL PARA RAZÓN DE CIERRE
+# ============================================================
+
+class ModalRazonCierre(discord.ui.Modal, title="Razón del cierre"):
+    razon = discord.ui.TextInput(
+        label="Escribe la razón del cierre",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=300
+    )
+
+    def __init__(self, cog, interaction):
+        super().__init__()
+        self.cog = cog
+        self.interaction = interaction
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await self.cog.cerrar_definitivo(self.interaction, self.razon.value)
+        await interaction.response.send_message("✔ Ticket cerrado correctamente.", ephemeral=True)
+
+
+# ============================================================
+#   BOTÓN CIERRE DEFINITIVO (ABRE MODAL)
+# ============================================================
+
+class BotonCerrarDefinitivo(discord.ui.Button):
+    def __init__(self):
+        super().__init__(
+            label="⚠️ Cerrar Definitivamente",
+            style=discord.ButtonStyle.danger,
+            custom_id="cerrar_definitivo_v1"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("Tickets")
+        modal = ModalRazonCierre(cog, interaction)
+        await interaction.response.send_modal(modal)
+
+
+# ============================================================
+#   VISTA FINAL DE CIERRE DEFINITIVO (PERSISTENTE)
+# ============================================================
+
+class VistaCierreFinal(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(BotonCerrarDefinitivo())
 
 
 # ============================================================
@@ -872,7 +919,7 @@ class Tickets(commands.Cog):
         save_json(CONFIG_PATH, self.config)
 
     # ============================================================
-    #   CREAR TICKET (STAFF DENTRO Y FUERA DEL EMBED)
+    #   CREAR TICKET
     # ============================================================
 
     async def crear_ticket(self, interaction: discord.Interaction, panel_id=None, label=None, emoji=None):
@@ -920,25 +967,17 @@ class Tickets(commands.Cog):
         }
         save_json(TICKETS_PATH, tickets)
 
-        # ============================
-        #   STAFF MENCIONADO FUERA DEL EMBED
-        # ============================
-
         roles_staff = [guild.get_role(r) for r in config["staff_roles"] if guild.get_role(r)]
         menciones_staff = " ".join(r.mention for r in roles_staff) if roles_staff else "—"
 
         await canal.send(f"{user.mention} {menciones_staff}")
 
-        # ============================
-        #   EMBED PRINCIPAL DEL TICKET
-        # ============================
-
         embed = discord.Embed(
             title="🎫 Nuevo ticket abierto",
             description=(
-                f"👤 **Usuario:** {user.mention}\n"
-                f"🔔 **Staff:** {menciones_staff}\n"
-                f"📌 **Tipo:** {emoji or ''} {label or 'Ticket'}"
+                f"👤 Usuario: {user.mention}\n"
+                f"🔔 Staff: {menciones_staff}\n"
+                f"📌 Tipo: {emoji or ''} {label or 'Ticket'}"
             ),
             color=discord.Color.green()
         )
@@ -952,7 +991,7 @@ class Tickets(commands.Cog):
         )
 
     # ============================================================
-    #   CIERRE DEFINITIVO
+    #   CIERRE DEFINITIVO (RECIBE LA RAZÓN DEL MODAL)
     # ============================================================
 
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
@@ -984,7 +1023,7 @@ class Tickets(commands.Cog):
         await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
 
     # ============================================================
-    #   TRACKING DE MENSAJES (PARA SABER QUIÉN PARTICIPÓ)
+    #   TRACKING DE MENSAJES
     # ============================================================
 
     @commands.Cog.listener()
@@ -1015,7 +1054,9 @@ async def setup(bot: commands.Bot):
 
     bot.tree.add_command(ticket_config)
 
-    # Vista persistente para cierre definitivo
     bot.add_view(VistaCierreFinal())
 
     print("[Tickets] Sistema de tickets cargado correctamente.")
+
+    
+
