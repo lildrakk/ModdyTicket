@@ -393,6 +393,56 @@ class MenuValoracion(discord.ui.Select):
         await interaction.followup.send_modal(modal)
 
 
+# ============================================================
+#   MODAL PARA RAZÓN DE CIERRE
+# ============================================================
+
+class ModalRazonCierre(discord.ui.Modal, title="Razón del cierre"):
+    razon = discord.ui.TextInput(
+        label="Escribe la razón del cierre",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=300
+    )
+
+    def __init__(self, cog, interaction):
+        super().__init__()
+        self.cog = cog
+        self.interaction = interaction
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await self.cog.cerrar_definitivo(self.interaction, self.razon.value)
+        await interaction.response.send_message("✔ Ticket cerrado correctamente.", ephemeral=True)
+
+
+# ============================================================
+#   BOTÓN CIERRE DEFINITIVO (ABRE MODAL)
+# ============================================================
+
+class BotonCerrarDefinitivo(discord.ui.Button):
+    def __init__(self):
+        super().__init__(
+            label="⚠️ Cerrar Definitivamente",
+            style=discord.ButtonStyle.danger,
+            custom_id="cerrar_definitivo_v1"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("Tickets")
+        modal = ModalRazonCierre(cog, interaction)
+        await interaction.response.send_modal(modal)
+
+
+# ============================================================
+#   VISTA FINAL DE CIERRE DEFINITIVO (PERSISTENTE)
+# ============================================================
+
+class VistaCierreFinal(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(BotonCerrarDefinitivo())
+
+
 class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
     comentario = discord.ui.TextInput(
         label="Comentario (opcional)",
