@@ -31,7 +31,7 @@ def save_json(path, data):
         json.dump(data, f, indent=4)
 
 # ============================================================
-#   SELECTS NUEVOS (ROLES, CATEGORÍA, LOGS, VALORACIONES)
+#   SELECTS (ROLES, CATEGORÍA, LOGS, VALORACIONES)
 # ============================================================
 
 class SelectRolesStaff(discord.ui.Select):
@@ -57,7 +57,7 @@ class SelectRolesStaff(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
 
-        await interaction.response.defer()  # ← ARREGLADO (sin efímero)
+        await interaction.response.defer()  # ← ARREGLADO
 
         if self.values[0] == "0":
             return await interaction.followup.send("❌ No hay roles válidos.", ephemeral=True)
@@ -443,7 +443,7 @@ class SelectStaff(discord.ui.Select):
 
 
 # ============================================================
-#   VALORACIÓN (1–5 ESTRELLAS + COMENTARIO)
+#   VALORACIÓN (1–5 ESTRELLAS + COMENTARIO OPCIONAL)
 # ============================================================
 
 class MenuValoracion(discord.ui.Select):
@@ -553,6 +553,7 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
         )
 
 
+
 # ============================================================
 #   BOTONES DE CONFIGURACIÓN
 # ============================================================
@@ -576,10 +577,10 @@ class BotonConfigRoles(discord.ui.Button):
                 ephemeral=True
             )
 
+        # NO EFÍMERO → evita interacción fallida
         await interaction.response.send_message(
             "Selecciona los roles staff:",
-            view=VistaRolesStaff(self.cog, self.panel_id, roles),
-            ephemeral=False
+            view=VistaRolesStaff(self.cog, self.panel_id, roles)
         )
 
 
@@ -601,8 +602,7 @@ class BotonConfigCategoria(discord.ui.Button):
 
         await interaction.response.send_message(
             "Selecciona la categoría donde se crearán los tickets:",
-            view=VistaCategoria(self.cog, self.panel_id, categorias),
-            ephemeral=False
+            view=VistaCategoria(self.cog, self.panel_id, categorias)
         )
 
 
@@ -627,8 +627,7 @@ class BotonConfigLogs(discord.ui.Button):
 
         await interaction.response.send_message(
             "Selecciona el canal de logs:",
-            view=VistaLogs(self.cog, self.panel_id, canales),
-            ephemeral=False
+            view=VistaLogs(self.cog, self.panel_id, canales)
         )
 
 
@@ -657,8 +656,7 @@ class BotonConfigValoraciones(discord.ui.Button):
 
         await interaction.response.send_message(
             "Selecciona el canal donde se enviarán las valoraciones:",
-            view=view,
-            ephemeral=False
+            view=view
         )
 
 
@@ -806,7 +804,7 @@ def generar_embed_config(guild, config):
 
 
 # ============================================================
-#   COMANDO /ticket_config (ARREGLADO)
+#   COMANDO /ticket_config (ARREGLADO 100%)
 # ============================================================
 
 @app_commands.command(name="ticket_config", description="Configura un panel de tickets.")
@@ -820,20 +818,20 @@ async def ticket_config(interaction: discord.Interaction, panel_id: int):
             ephemeral=True
         )
 
-    # Mensaje inicial efímero (no se edita desde selects)
-    await interaction.response.send_message("Cargando configuración...", ephemeral=True)
+    # ⚠️ IMPORTANTE:
+    # Quitamos efímero → evita interacción fallida con selects
+    await interaction.response.send_message("Cargando configuración...")
 
     config = cog.get_config(interaction.guild.id, panel_id)
 
     embed = generar_embed_config(interaction.guild, config)
     view = VistaConfig(cog, panel_id, interaction.guild.id)
 
-    # Editamos SOLO este mensaje, no los efímeros de selects
     await interaction.edit_original_response(
         content=None,
         embed=embed,
         view=view
-        )
+                )
 
 
 
@@ -874,7 +872,7 @@ class Tickets(commands.Cog):
         save_json(CONFIG_PATH, self.config)
 
     # ============================================================
-    #   CREAR TICKET (MEJORADO + STAFF MENCIONADO FUERA DEL EMBED)
+    #   CREAR TICKET (STAFF DENTRO Y FUERA DEL EMBED)
     # ============================================================
 
     async def crear_ticket(self, interaction: discord.Interaction, panel_id=None, label=None, emoji=None):
@@ -929,8 +927,7 @@ class Tickets(commands.Cog):
         roles_staff = [guild.get_role(r) for r in config["staff_roles"] if guild.get_role(r)]
         menciones_staff = " ".join(r.mention for r in roles_staff) if roles_staff else "—"
 
-        if menciones_staff != "—":
-            await canal.send(f"🔔 **Staff notificado:** {menciones_staff}")
+        await canal.send(f"{user.mention} {menciones_staff}")
 
         # ============================
         #   EMBED PRINCIPAL DEL TICKET
@@ -940,6 +937,7 @@ class Tickets(commands.Cog):
             title="🎫 Nuevo ticket abierto",
             description=(
                 f"👤 **Usuario:** {user.mention}\n"
+                f"🔔 **Staff:** {menciones_staff}\n"
                 f"📌 **Tipo:** {emoji or ''} {label or 'Ticket'}"
             ),
             color=discord.Color.green()
@@ -1017,6 +1015,7 @@ async def setup(bot: commands.Bot):
 
     bot.tree.add_command(ticket_config)
 
+    # Vista persistente para cierre definitivo
     bot.add_view(VistaCierreFinal())
 
     print("[Tickets] Sistema de tickets cargado correctamente.")
