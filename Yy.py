@@ -452,50 +452,6 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
 
 
 
-
-
- 0 pE EMBED DE CONFIG
-# ============================================================
-
-def generar_embed_config(guild, config):
-
-    estado_notificar = "Activado" if config.get("notificar_habilitado", True) else "Desactivado"
-    cooldown = config.get("notificar_cooldown", 5)
-
-    embed = discord.Embed(
-        title="⚙️ Configuración del Panel de Tickets",
-        color=discord.Color.blue()
-    )
-
-    embed.add_field(
-        name="Roles staff",
-        value=", ".join([f"<@&{r}>" for r in config['staff_roles']]) or "—",
-        inline=False
-    )
-    embed.add_field(
-        name="Categoría",
-        value=f"<#{config['categoria_id']}>" if config["categoria_id"] else "—",
-        inline=False
-    )
-    embed.add_field(
-        name="Canal de logs",
-        value=f"<#{config['logs_id']}>" if config["logs_id"] else "—",
-        inline=False
-    )
-    embed.add_field(
-        name="Canal de valoraciones",
-        value=f"<#{config['valoraciones_id']}>" if config["valoraciones_id"] else "—",
-        inline=False
-    )
-    embed.add_field(
-        name="Razón obligatoria",
-        value="Sí" if config["razon_obligatoria"] else "No",
-        inline=False
-    )
-    embed.add_field(
-
-
-
 # ============================================================
 #   MODAL PARA RAZÓN DE CIERRE
 # ============================================================
