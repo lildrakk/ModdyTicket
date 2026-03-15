@@ -167,4 +167,4 @@ async def main():
 #   EJECUTAR BOT
 # ============================================================
 
-asyncio.run(main()) 
+asyncio.run(main())
