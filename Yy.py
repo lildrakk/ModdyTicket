@@ -627,7 +627,6 @@ class Tickets(commands.Cog):
     # ============================================================
     #   CIERRE DEFINITIVO
     # ============================================================
-
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
 
         canal = interaction.channel
