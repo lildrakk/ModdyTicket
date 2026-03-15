@@ -141,33 +141,13 @@ async def on_app_command_error(interaction, error):
 
 
 # ============================================================
-#   CAPTURAR ERRORES DE BOTONES / SELECTS / MODALES
+#   CAPTURA GLOBAL DE ERRORES (NO ROMPE INTERACCIONES)
 # ============================================================
 
 @bot.event
-async def on_interaction(interaction: discord.Interaction):
-    try:
-        # Compatibilidad con todas las versiones de discord.py
-        if hasattr(bot, "process_interaction"):
-            await bot.process_interaction(interaction)
-        else:
-            await bot._process_interaction(interaction)
-
-    except Exception:
-        print("\n❌ ERROR EN INTERACCIÓN (botón / select / modal):")
-        print(f"Usuario: {interaction.user}")
-        print(f"Tipo: {interaction.type}")
-        print(f"Datos: {interaction.data}")
-        traceback.print_exc()
-
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "❌ Ocurrió un error procesando esta acción.",
-                    ephemeral=True
-                )
-        except:
-            pass
+async def on_error(event, *args, **kwargs):
+    print(f"\n❌ ERROR EN EVENTO: {event}")
+    traceback.print_exc()
 
 
 # ============================================================
