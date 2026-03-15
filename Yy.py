@@ -639,7 +639,10 @@ class Tickets(commands.Cog):
         ticket_data = tickets.get(canal_id)
 
         if not ticket_data:
-            return await interaction.followup.send("❌ No se encontró información del ticket.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ No se encontró información del ticket.",
+                ephemeral=True
+            )
 
         logs_cog = self.bot.get_cog("Logs")
         if logs_cog:
