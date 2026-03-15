@@ -56,12 +56,10 @@ class TicketBot(commands.Bot):
         #   REGISTRAR VISTAS PERSISTENTES
         # --------------------------------------------------------
         try:
-            # Vista final de cierre
             from cogs.tickets import VistaCierreFinal, VistaTicket
             self.add_view(VistaCierreFinal())
             print("🔧 VistaCierreFinal registrada.")
 
-            # Registrar VistaTicket (importante para que funcione tras reinicio)
             self.add_view(VistaTicket({
                 "notificar_habilitado": True
             }))
@@ -80,10 +78,8 @@ class TicketBot(commands.Bot):
             for guild_id, guild_panels in data.items():
                 for panel_id, panel in guild_panels.items():
 
-                    # Botones persistentes
                     self.add_view(VistaPanel(panel_id, panel))
 
-                    # Menú persistente
                     if "menu" in panel and panel["menu"]:
                         self.add_view(VistaPanelMenu(panel_id, panel["menu"]))
 
@@ -97,13 +93,14 @@ class TicketBot(commands.Bot):
         # --------------------------------------------------------
         try:
             synced = await self.tree.sync()
-            print(f"🛠 {len(synced)} comandos sincronizados.")
+            print(f"🛠  {len(synced)} comandos sincronizados.")
         except Exception:
             print("❌ Error sincronizando comandos:")
             traceback.print_exc()
 
 
 bot = TicketBot()
+
 
 # ============================================================
 #   EVENTO ON_READY
@@ -143,18 +140,29 @@ async def on_app_command_error(interaction, error):
         pass
 
 
+# ============================================================
+#   CAPTURAR ERRORES DE BOTONES / SELECTS / MODALES
+# ============================================================
+
 @bot.event
-async def on_error(event, *args, **kwargs):
-    print(f"\n❌ ERROR EN EVENTO: {event}")
+async def on_interaction(interaction: discord.Interaction):
+    try:
+        await bot.process_application_commands(interaction)
+    except Exception:
+        print("\n❌ ERROR EN INTERACCIÓN (botón / select / modal):")
+        print(f"Usuario: {interaction.user}")
+        print(f"Tipo: {interaction.type}")
+        print(f"Datos: {interaction.data}")
+        traceback.print_exc()
 
-    if args:
-        interaction = args[0]
-        if isinstance(interaction, discord.Interaction):
-            print("🔍 Tipo: Error en botón / select / modal")
-            print(f"Usuario: {interaction.user}")
-            print(f"Datos: {interaction.data}")
-
-    traceback.print_exc()
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "❌ Ocurrió un error procesando esta acción.",
+                    ephemeral=True
+                )
+        except:
+            pass
 
 
 # ============================================================
@@ -174,4 +182,4 @@ async def main():
 #   EJECUTAR BOT
 # ============================================================
 
-asyncio.run(main())
+asyncio.run(main()) 
