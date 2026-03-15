@@ -147,7 +147,12 @@ async def on_app_command_error(interaction, error):
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     try:
-        await bot.process_application_commands(interaction)
+        # Compatibilidad con todas las versiones de discord.py
+        if hasattr(bot, "process_interaction"):
+            await bot.process_interaction(interaction)
+        else:
+            await bot._process_interaction(interaction)
+
     except Exception:
         print("\n❌ ERROR EN INTERACCIÓN (botón / select / modal):")
         print(f"Usuario: {interaction.user}")
