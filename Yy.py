@@ -629,22 +629,21 @@ class Tickets(commands.Cog):
     # ============================================================
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
 
-        canal = interaction.channel
-        canal_id = str(canal.id)
-        usuario = interaction.user
-        guild = interaction.guild
+    canal = interaction.channel
+    canal_id = str(canal.id)
+    usuario = interaction.user
+    guild = interaction.guild
 
-        tickets = load_json(TICKETS_PATH)
-        ticket_data = tickets.get(canal_id)
+    tickets = load_json(TICKETS_PATH)
+    ticket_data = tickets.get(canal_id)
 
-        if not ticket_data:
-            return await interaction.response.send_message(
-                "❌ No se encontró información del ticket.",
-                ephemeral=True
-            )
+    if not ticket_data:
+        return
 
-        logs_cog = self.bot.get_cog("Logs")
-        if logs_cog:
+    # LOGS
+    logs_cog = self.bot.get_cog("Logs")
+    if logs_cog:
+        try:
             await logs_cog.enviar_log(
                 guild=guild,
                 canal_ticket=canal,
@@ -652,12 +651,24 @@ class Tickets(commands.Cog):
                 razon_cierre=razon,
                 cerrado_por=usuario
             )
+        except:
+            pass
 
-        del tickets[canal_id]
-        save_json(TICKETS_PATH, tickets)
+    # BORRAR DEL JSON
+    del tickets[canal_id]
+    save_json(TICKETS_PATH, tickets)
 
+    # INTENTAR ENVIAR MENSAJE FINAL (si falla, ignorar)
+    try:
         await canal.send(f"🔒 Ticket cerrado por {usuario.mention}.\n📝 Razón: {razon}")
+    except:
+        pass
+
+    # BORRAR CANAL SIEMPRE
+    try:
         await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
+    except:
+        pass
 
     # ============================================================
     #   TRACKING DE MENSAJES
