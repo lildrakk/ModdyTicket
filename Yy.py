@@ -470,8 +470,12 @@ class ModalRazonCierre(discord.ui.Modal, title="Razón del cierre"):
             self.razon.required = config.get("razon_obligatoria", False)
 
     async def on_submit(self, interaction: discord.Interaction):
+
+        # Defer obligatorio para evitar errores
+        await interaction.response.defer(ephemeral=True)
+
+        # Cerrar ticket
         await self.cog.cerrar_definitivo(interaction, self.razon.value)
-        await interaction.response.send_message("✅ Ticket cerrado correctamente.", ephemeral=True)
 
 
 # ============================================================
@@ -506,14 +510,16 @@ class BotonCerrarDefinitivo(discord.ui.Button):
 
         modal = ModalRazonCierre(self.cog, self.canal_id)
         await interaction.response.send_modal(modal)
+
+
 # ============================================================
-#   VISTA FINAL DE CIERRE DEFINITIVO (VACÍA PARA COMPATIBILIDAD)
+#   VISTA FINAL DE CIERRE DEFINITIVO
 # ============================================================
 
 class VistaCierreFinal(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        # Se deja vacía porque los botones ahora son dinámicos por ticket.
+        # Vacía por compatibilidad
 
 
 # ============================================================
@@ -625,50 +631,51 @@ class Tickets(commands.Cog):
         )
 
     # ============================================================
-    #   CIERRE DEFINITIVO
+    #   CIERRE DEFINITIVO (CORREGIDO)
     # ============================================================
+
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
 
-    canal = interaction.channel
-    canal_id = str(canal.id)
-    usuario = interaction.user
-    guild = interaction.guild
+        canal = interaction.channel
+        canal_id = str(canal.id)
+        usuario = interaction.user
+        guild = interaction.guild
 
-    tickets = load_json(TICKETS_PATH)
-    ticket_data = tickets.get(canal_id)
+        tickets = load_json(TICKETS_PATH)
+        ticket_data = tickets.get(canal_id)
 
-    if not ticket_data:
-        return
+        if not ticket_data:
+            return
 
-    # LOGS
-    logs_cog = self.bot.get_cog("Logs")
-    if logs_cog:
+        # LOGS (si falla, ignorar)
+        logs_cog = self.bot.get_cog("Logs")
+        if logs_cog:
+            try:
+                await logs_cog.enviar_log(
+                    guild=guild,
+                    canal_ticket=canal,
+                    ticket_data=ticket_data,
+                    razon_cierre=razon,
+                    cerrado_por=usuario
+                )
+            except:
+                pass
+
+        # BORRAR DEL JSON
+        del tickets[canal_id]
+        save_json(TICKETS_PATH, tickets)
+
+        # INTENTAR ENVIAR MENSAJE FINAL (si falla, ignorar)
         try:
-            await logs_cog.enviar_log(
-                guild=guild,
-                canal_ticket=canal,
-                ticket_data=ticket_data,
-                razon_cierre=razon,
-                cerrado_por=usuario
-            )
+            await canal.send(f"🔒 Ticket cerrado por {usuario.mention}.\n📝 Razón: {razon}")
         except:
             pass
 
-    # BORRAR DEL JSON
-    del tickets[canal_id]
-    save_json(TICKETS_PATH, tickets)
-
-    # INTENTAR ENVIAR MENSAJE FINAL (si falla, ignorar)
-    try:
-        await canal.send(f"🔒 Ticket cerrado por {usuario.mention}.\n📝 Razón: {razon}")
-    except:
-        pass
-
-    # BORRAR CANAL SIEMPRE
-    try:
-        await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
-    except:
-        pass
+        # BORRAR CANAL SIEMPRE
+        try:
+            await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
+        except:
+            pass
 
     # ============================================================
     #   TRACKING DE MENSAJES
@@ -705,4 +712,4 @@ async def setup(bot: commands.Bot):
     # Vista vacía para compatibilidad con tu bot.py
     bot.add_view(VistaCierreFinal())
 
-    print("[Tickets] Sistema de tickets cargado correctamente.") 
+    print("[Tickets] Sistema de tickets cargado correctamente.")
