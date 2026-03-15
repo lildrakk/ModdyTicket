@@ -482,8 +482,7 @@ class BotonCerrarDefinitivo(discord.ui.Button):
     def __init__(self, cog: "Tickets", canal_id: str):
         super().__init__(
             label="⚠️ Cerrar definitivamente",
-            style=discord.ButtonStyle.danger,
-            custom_id="cerrar_definitivo_v1"
+            style=discord.ButtonStyle.danger
         )
         self.cog = cog
         self.canal_id = canal_id
@@ -507,8 +506,6 @@ class BotonCerrarDefinitivo(discord.ui.Button):
 
         modal = ModalRazonCierre(self.cog, self.canal_id)
         await interaction.response.send_modal(modal)
-
-
 # ============================================================
 #   VISTA FINAL DE CIERRE DEFINITIVO (VACÍA PARA COMPATIBILIDAD)
 # ============================================================
