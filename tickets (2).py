@@ -564,94 +564,94 @@ class Tickets(commands.Cog):
 
     async def crear_ticket(self, interaction: discord.Interaction, panel_id=None, label=None, emoji=None):
 
-    await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
 
-    guild = interaction.guild
-    user = interaction.user
+        guild = interaction.guild
+        user = interaction.user
 
-    config = self.get_config(guild.id, panel_id)
-    categoria = guild.get_channel(config["categoria_id"]) if config["categoria_id"] else None
+        config = self.get_config(guild.id, panel_id)
+        categoria = guild.get_channel(config["categoria_id"]) if config["categoria_id"] else None
 
-    nombre_canal = f"ticket-{user.name}".replace(" ", "-")[:90]
+        nombre_canal = f"ticket-{user.name}".replace(" ", "-")[:90]
 
-    # ================================
-    # PERMISOS CORREGIDOS (AQUÍ ESTABA EL FALLO)
-    # ================================
-    bot_member = guild.get_member(self.bot.user.id)
+        # ================================
+        # PERMISOS CORREGIDOS (AQUÍ ESTABA EL FALLO)
+        # ================================
+        bot_member = guild.get_member(self.bot.user.id)
 
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
 
-        # Usuario que abre el ticket
-        user: discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=True,
-            read_message_history=True
-        ),
-
-        # BOT (PERMISOS NECESARIOS PARA LOGS)
-        bot_member: discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=True,
-            read_message_history=True,
-            attach_files=True,
-            embed_links=True
-        )
-    }
-
-    # Staff
-    for rol_id in config["staff_roles"]:
-        rol = guild.get_role(rol_id)
-        if rol:
-            overwrites[rol] = discord.PermissionOverwrite(
+            # Usuario que abre el ticket
+            user: discord.PermissionOverwrite(
                 view_channel=True,
                 send_messages=True,
                 read_message_history=True
+            ),
+
+            # BOT (PERMISOS NECESARIOS PARA LOGS)
+            bot_member: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+                embed_links=True
             )
+        }
 
-    # Crear canal
-    canal = await guild.create_text_channel(
-        nombre_canal,
-        category=categoria,
-        overwrites=overwrites
-    )
+        # Staff
+        for rol_id in config["staff_roles"]:
+            rol = guild.get_role(rol_id)
+            if rol:
+                overwrites[rol] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True
+                )
 
-    # Guardar ticket
-    tickets = load_json(TICKETS_PATH)
-    tickets[str(canal.id)] = {
-        "guild_id": guild.id,
-        "usuario_id": user.id,
-        "panel_id": panel_id,
-        "reclamado_por": None,
-        "reclamado": False,
-        "last_notify": 0,
-        "participantes": [user.id],
-        "timestamp": now_es().isoformat()
-    }
-    save_json(TICKETS_PATH, tickets)
+        # Crear canal
+        canal = await guild.create_text_channel(
+            nombre_canal,
+            category=categoria,
+            overwrites=overwrites
+        )
 
-    roles_staff = [guild.get_role(r) for r in config["staff_roles"] if guild.get_role(r)]
-    menciones_staff = " ".join(r.mention for r in roles_staff) if roles_staff else "—"
+        # Guardar ticket
+        tickets = load_json(TICKETS_PATH)
+        tickets[str(canal.id)] = {
+            "guild_id": guild.id,
+            "usuario_id": user.id,
+            "panel_id": panel_id,
+            "reclamado_por": None,
+            "reclamado": False,
+            "last_notify": 0,
+            "participantes": [user.id],
+            "timestamp": now_es().isoformat()
+        }
+        save_json(TICKETS_PATH, tickets)
 
-    await canal.send(f"{user.mention} {menciones_staff}")
+        roles_staff = [guild.get_role(r) for r in config["staff_roles"] if guild.get_role(r)]
+        menciones_staff = " ".join(r.mention for r in roles_staff) if roles_staff else "—"
 
-    embed = discord.Embed(
-        title="🎫 Nuevo ticket abierto",
-        description=(
-            f"👤 Usuario: {user.mention}\n"
-            f"🔔 Staff: {menciones_staff}\n"
-            f"📂 Tipo: {emoji or ''} {label or 'Ticket'}"
-        ),
-        color=discord.Color.green()
-    )
+        await canal.send(f"{user.mention} {menciones_staff}")
 
-    view = VistaTicket(config)
-    await canal.send(embed=embed, view=view)
+        embed = discord.Embed(
+            title="🎫 Nuevo ticket abierto",
+            description=(
+                f"👤 Usuario: {user.mention}\n"
+                f"🔔 Staff: {menciones_staff}\n"
+                f"📂 Tipo: {emoji or ''} {label or 'Ticket'}"
+            ),
+            color=discord.Color.green()
+        )
 
-    await interaction.followup.send(
-        f"✅ {canal.mention} creado correctamente",
-        ephemeral=True
-    )
+        view = VistaTicket(config)
+        await canal.send(embed=embed, view=view)
+
+        await interaction.followup.send(
+            f"✅ {canal.mention} creado correctamente",
+            ephemeral=True
+        )
 
     # ============================================================
     #   CIERRE DEFINITIVO (CORREGIDO)
