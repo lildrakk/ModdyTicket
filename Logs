@@ -97,28 +97,6 @@ class Logs(commands.Cog):
         duracion = fecha_ci - fecha_ap
 
         # ============================================================
-        #   CONTAR MENSAJES DEL STAFF (SEGURO, HASTA 500)
-        # ============================================================
-        staff_msgs = 0
-        staff_roles = panel_cfg.get("staff_roles", [])
-
-        print("🟦 Leyendo últimos 500 mensajes para contar staff...")
-
-        try:
-            mensajes = []
-            async for msg in canal_ticket.history(limit=500):
-                mensajes.append(msg)
-
-            print(f"🟩 Se leyeron {len(mensajes)} mensajes (máx 500).")
-
-            for msg in mensajes:
-                if any(r.id in staff_roles for r in getattr(msg.author, "roles", [])):
-                    staff_msgs += 1
-
-        except Exception as e:
-            print("⚠️ Error leyendo historial (staff_msgs):", e)
-
-        # ============================================================
         #   VALORACIONES
         # ============================================================
         ratings = load_json(RATINGS_PATH)
@@ -178,7 +156,6 @@ class Logs(commands.Cog):
         embed.add_field(name="🕒 Apertura", value=f"<t:{int(fecha_ap.timestamp())}:F>", inline=False)
         embed.add_field(name="🕒 Cierre", value=f"<t:{int(fecha_ci.timestamp())}:F>", inline=False)
         embed.add_field(name="⏳ Duración", value=str(duracion).split('.')[0], inline=False)
-        embed.add_field(name="💬 Mensajes del staff", value=str(staff_msgs), inline=False)
         embed.add_field(name="📝 Razón", value=razon_cierre, inline=False)
         embed.add_field(name="⭐ Última valoración", value=estrellas, inline=False)
         embed.add_field(name="💬 Comentario del usuario", value=comentario, inline=False)
