@@ -26,7 +26,7 @@ class Logs(commands.Cog):
         self.bot = bot
 
     # ============================================================
-    #   TRANSCRIPT SEGURO (NO BLOQUEA)
+    #   TRANSCRIPT SEGURO
     # ============================================================
     async def generar_transcript(self, canal: discord.TextChannel):
         transcript_path = f"transcripts/{canal.id}.txt"
@@ -55,7 +55,7 @@ class Logs(commands.Cog):
         return transcript_path
 
     # ============================================================
-    #   LOG SEGURO (NO BLOQUEA)
+    #   ENVIAR LOG
     # ============================================================
     async def enviar_log(
         self,
@@ -97,15 +97,24 @@ class Logs(commands.Cog):
         duracion = fecha_ci - fecha_ap
 
         # ============================================================
-        #   CONTAR MENSAJES DEL STAFF (SEGURO)
+        #   CONTAR MENSAJES DEL STAFF (SEGURO, HASTA 500)
         # ============================================================
         staff_msgs = 0
         staff_roles = panel_cfg.get("staff_roles", [])
 
+        print("🟦 Leyendo últimos 500 mensajes para contar staff...")
+
         try:
-            async for msg in canal_ticket.history(limit=300):
+            mensajes = []
+            async for msg in canal_ticket.history(limit=500):
+                mensajes.append(msg)
+
+            print(f"🟩 Se leyeron {len(mensajes)} mensajes (máx 500).")
+
+            for msg in mensajes:
                 if any(r.id in staff_roles for r in getattr(msg.author, "roles", [])):
                     staff_msgs += 1
+
         except Exception as e:
             print("⚠️ Error leyendo historial (staff_msgs):", e)
 
@@ -137,7 +146,7 @@ class Logs(commands.Cog):
             print("🟥 El canal YA NO EXISTE antes del transcript (se borró demasiado pronto).")
 
         # ============================================================
-        #   TRANSCRIPT (SEGURO)
+        #   TRANSCRIPT
         # ============================================================
         try:
             transcript_path = await self.generar_transcript(canal_ticket)
@@ -172,14 +181,14 @@ class Logs(commands.Cog):
         embed.add_field(name="💬 Mensajes del staff", value=str(staff_msgs), inline=False)
         embed.add_field(name="📝 Razón", value=razon_cierre, inline=False)
         embed.add_field(name="⭐ Última valoración", value=estrellas, inline=False)
-        embed.add_field(name="💬 Comentario", value=comentario, inline=False)
+        embed.add_field(name="💬 Comentario del usuario", value=comentario, inline=False)
         embed.add_field(name="📊 Media", value=f"{media:.2f}/5 ⭐" if media else "Sin valoraciones", inline=False)
 
         print("➡️ Enviando embed...")
         await canal_logs.send(embed=embed)
 
         # ============================================================
-        #   ENVIAR TRANSCRIPT (SI EXISTE)
+        #   ENVIAR TRANSCRIPT
         # ============================================================
         if transcript_path:
             print("➡️ Enviando transcript...")
