@@ -1,0 +1,233 @@
+import discord
+from discord.ext import commands
+import json
+import os
+import datetime
+
+CONFIG_PATH = "data/tickets_config.json"
+TICKETS_PATH = "data/tickets_data.json"
+RATINGS_PATH = "data/tickets_ratings.json"
+
+os.makedirs("transcripts", exist_ok=True)
+
+# ============================================================
+#   UTILIDADES JSON
+# ============================================================
+
+def load_json(path):
+    if not os.path.exists(path):
+        with open(path, "w") as f:
+            json.dump({}, f)
+    with open(path, "r") as f:
+        return json.load(f)
+
+def save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)
+
+# ============================================================
+#   COG PRINCIPAL DE LOGS PRO
+# ============================================================
+
+class Logs(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    # ============================================================
+    #   GENERAR TRANSCRIPT PRO
+    # ============================================================
+
+    async def generar_transcript(self, canal: discord.TextChannel):
+        transcript_path = f"transcripts/{canal.id}.txt"
+
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            f.write(f"TRANSCRIPT DEL TICKET: {canal.name}\n")
+            f.write(f"ID DEL CANAL: {canal.id}\n")
+            f.write(f"FECHA DE GENERACIÓN: {datetime.datetime.utcnow()}\n")
+            f.write("=" * 70 + "\n\n")
+
+            async for msg in canal.history(limit=None, oldest_first=True):
+                fecha = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                autor = f"{msg.author} ({msg.author.id})"
+                contenido = msg.content.replace("\n", " ")
+
+                f.write(f"[{fecha}] {autor}: {contenido}\n")
+
+                for adj in msg.attachments:
+                    f.write(f"    [ADJUNTO] {adj.url}\n")
+
+                for st in msg.stickers:
+                    f.write(f"    [STICKER] {st.name}\n")
+
+        return transcript_path
+
+    # ============================================================
+    #   ENVIAR LOG PREMIUM ULTRA PRO (CORREGIDO)
+    # ============================================================
+
+    async def enviar_log(
+        self,
+        guild: discord.Guild,
+        canal_ticket: discord.TextChannel,
+        ticket_data: dict,
+        razon_cierre: str,
+        cerrado_por: discord.Member
+    ):
+        # Cargar configuración del panel
+        config = load_json(CONFIG_PATH)
+        guild_cfg = config.get(str(guild.id), {})
+
+        # FIX: panel_id puede estar como string o como entero
+        panel_id = str(ticket_data["panel_id"])
+        panel_cfg = guild_cfg.get(panel_id)
+
+        if not panel_cfg:
+            panel_cfg = guild_cfg.get(ticket_data["panel_id"], {})
+
+        logs_id = panel_cfg.get("logs_id")
+        if not logs_id:
+            return
+
+        canal_logs = guild.get_channel(logs_id)
+        if not canal_logs:
+            return
+
+        # Obtener usuario y staff
+        usuario = guild.get_member(ticket_data["usuario_id"])
+        staff = guild.get_member(ticket_data.get("reclamado_por")) if ticket_data.get("reclamado_por") else None
+
+        # Fechas
+        fecha_ap = datetime.datetime.fromisoformat(ticket_data["timestamp"])
+        fecha_ci = datetime.datetime.utcnow()
+        duracion = fecha_ci - fecha_ap
+
+        # ============================================================
+        #   CONTADOR REAL DE MENSAJES DEL STAFF
+        # ============================================================
+
+        staff_roles = panel_cfg.get("staff_roles", [])
+        staff_msgs = 0
+
+        async for msg in canal_ticket.history(limit=None):
+            if any(r.id in staff_roles for r in msg.author.roles):
+                staff_msgs += 1
+
+        # ============================================================
+        #   VALORACIONES DEL TICKET
+        # ============================================================
+
+        ratings = load_json(RATINGS_PATH)
+        valoraciones = ratings.get(str(canal_ticket.id), [])
+
+        if valoraciones:
+            media = sum(v["rating"] for v in valoraciones) / len(valoraciones)
+            ultima = valoraciones[-1]
+            estrellas = "⭐" * ultima["rating"]
+            comentario = ultima["comentario"] or "Sin comentario"
+        else:
+            media = None
+            estrellas = "Sin valoración"
+            comentario = "—"
+
+        # Generar transcript
+        transcript_path = await self.generar_transcript(canal_ticket)
+
+        # ============================================================
+        #   EMBED PREMIUM
+        # ============================================================
+
+        embed = discord.Embed(
+            title="📘 Registro Completo del Ticket",
+            description="Ticket cerrado y archivado correctamente.",
+            color=discord.Color.from_rgb(52, 152, 219),
+            timestamp=datetime.datetime.utcnow()
+        )
+
+        embed.add_field(
+            name="👤 Usuario",
+            value=f"{usuario.mention if usuario else 'Desconocido'} (`{ticket_data['usuario_id']}`)",
+            inline=False
+        )
+
+        embed.add_field(
+            name="🛠 Staff que atendió",
+            value=staff.mention if staff else "No reclamado",
+            inline=False
+        )
+
+        embed.add_field(
+            name="🔒 Cerrado por",
+            value=cerrado_por.mention,
+            inline=False
+        )
+
+        embed.add_field(
+            name="🕒 Fecha de apertura",
+            value=f"<t:{int(fecha_ap.timestamp())}:F>",
+            inline=False
+        )
+
+        embed.add_field(
+            name="🕒 Fecha de cierre",
+            value=f"<t:{int(fecha_ci.timestamp())}:F>",
+            inline=False
+        )
+
+        embed.add_field(
+            name="⏳ Duración total",
+            value=str(duracion).split(".")[0],
+            inline=False
+        )
+
+        embed.add_field(
+            name="💬 Mensajes del staff",
+            value=str(staff_msgs),
+            inline=False
+        )
+
+        embed.add_field(
+            name="📝 Razón del cierre",
+            value=razon_cierre,
+            inline=False
+        )
+
+        embed.add_field(
+            name="⭐ Última valoración",
+            value=estrellas,
+            inline=False
+        )
+
+        embed.add_field(
+            name="💬 Comentario del usuario",
+            value=comentario,
+            inline=False
+        )
+
+        embed.add_field(
+            name="📊 Valoración media",
+            value=f"{media:.2f}/5 ⭐" if media else "Sin valoraciones",
+            inline=False
+        )
+
+        embed.add_field(
+            name="📄 Transcript",
+            value="Adjunto abajo",
+            inline=False
+        )
+
+        embed.set_footer(text=f"Ticket ID: {canal_ticket.id}")
+
+        await canal_logs.send(embed=embed)
+
+        # Enviar transcript
+        await canal_logs.send(
+            f"📄 Transcript del ticket `{canal_ticket.name}`",
+            file=discord.File(transcript_path)
+        )
+
+# ============================================================
+#   SETUP
+# ============================================================
+
+async def setup(bot):
+    await bot.add_cog(Logs(bot)) 
