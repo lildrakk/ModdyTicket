@@ -9,14 +9,12 @@ import traceback
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
 
-
 # ============================================================
 #   CARGAR CONFIG
 # ============================================================
 
 with open("config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
-
 
 # ============================================================
 #   INTENTS Y BOT
@@ -58,12 +56,12 @@ class TicketBot(commands.Bot):
         try:
             from cogs.tickets import VistaCierreFinal, VistaTicket
             self.add_view(VistaCierreFinal())
-            print("🔧 VistaCierreFinal registrada.")
+            print("🛠️ VistaCierreFinal registrada.")
 
             self.add_view(VistaTicket({
                 "notificar_habilitado": True
             }))
-            print("🔧 VistaTicket registrada.")
+            print("🛠️ VistaTicket registrada.")
         except Exception:
             print("❌ Error registrando vistas de tickets:")
             traceback.print_exc()
@@ -83,7 +81,7 @@ class TicketBot(commands.Bot):
                     if "menu" in panel and panel["menu"]:
                         self.add_view(VistaPanelMenu(panel_id, panel["menu"]))
 
-            print("🔧 Vistas persistentes de paneles registradas.")
+            print("🛠️ Vistas persistentes de paneles registradas.")
         except Exception:
             print("❌ Error registrando vistas de paneles:")
             traceback.print_exc()
@@ -93,14 +91,13 @@ class TicketBot(commands.Bot):
         # --------------------------------------------------------
         try:
             synced = await self.tree.sync()
-            print(f"🛠  {len(synced)} comandos sincronizados.")
+            print(f"🪄 {len(synced)} comandos sincronizados.")
         except Exception:
             print("❌ Error sincronizando comandos:")
             traceback.print_exc()
 
 
 bot = TicketBot()
-
 
 # ============================================================
 #   EVENTO ON_READY
@@ -109,7 +106,6 @@ bot = TicketBot()
 @bot.event
 async def on_ready():
     print(f"✅ Bot conectado como {bot.user}")
-
 
 # ============================================================
 #   SISTEMA PRO DE ERRORES
@@ -125,7 +121,6 @@ async def on_command_error(ctx, error):
     except:
         pass
 
-
 @bot.tree.error
 async def on_app_command_error(interaction, error):
     print("\n❌ ERROR EN SLASH COMMAND:")
@@ -139,16 +134,10 @@ async def on_app_command_error(interaction, error):
     except:
         pass
 
-
-# ============================================================
-#   CAPTURA GLOBAL DE ERRORES (NO ROMPE INTERACCIONES)
-# ============================================================
-
 @bot.event
 async def on_error(event, *args, **kwargs):
     print(f"\n❌ ERROR EN EVENTO: {event}")
     traceback.print_exc()
-
 
 # ============================================================
 #   MAIN
@@ -156,15 +145,13 @@ async def on_error(event, *args, **kwargs):
 
 async def main():
     try:
-        async with bot:
-            await bot.start(TOKEN)
+        await bot.start(TOKEN)
     except Exception:
         print("\n❌ ERROR AL INICIAR EL BOT:")
         traceback.print_exc()
-
 
 # ============================================================
 #   EJECUTAR BOT
 # ============================================================
 
-asyncio.run(main())
+asyncio.run(main()) 
