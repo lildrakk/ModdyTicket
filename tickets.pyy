@@ -684,17 +684,23 @@ async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
         except Exception as e:
             print("❌ ERROR EN LOGS:", e)
 
-    # BORRAR DEL JSON
+    # ============================================================
+    #   BORRAR DEL JSON (SIEMPRE)
+    # ============================================================
     del tickets[canal_id]
     save_json(TICKETS_PATH, tickets)
 
-    # INTENTAR ENVIAR MENSAJE FINAL (si falla, ignorar)
+    # ============================================================
+    #   MENSAJE FINAL (NO obligatorio)
+    # ============================================================
     try:
         await canal.send(f"🔒 Ticket cerrado por {usuario.mention}.\n📝 Razón: {razon}")
     except:
         pass
 
-    # BORRAR CANAL SIEMPRE
+    # ============================================================
+    #   BORRAR CANAL (SIEMPRE)
+    # ============================================================
     try:
         await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
     except:
