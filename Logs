@@ -25,6 +25,9 @@ class Logs(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # ============================================================
+    #   TRANSCRIPT SEGURO (NO BLOQUEA)
+    # ============================================================
     async def generar_transcript(self, canal: discord.TextChannel):
         transcript_path = f"transcripts/{canal.id}.txt"
 
@@ -34,21 +37,26 @@ class Logs(commands.Cog):
             f.write(f"FECHA DE GENERACIÓN: {datetime.datetime.utcnow()}\n")
             f.write("=" * 70 + "\n\n")
 
-            async for msg in canal.history(limit=None, oldest_first=True):
-                fecha = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-                autor = f"{msg.author} ({msg.author.id})"
-                contenido = msg.content.replace("\n", " ")
+            try:
+                async for msg in canal.history(limit=500, oldest_first=True):
+                    fecha = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                    autor = f"{msg.author} ({msg.author.id})"
+                    contenido = msg.content.replace("\n", " ")
 
-                f.write(f"[{fecha}] {autor}: {contenido}\n")
+                    f.write(f"[{fecha}] {autor}: {contenido}\n")
 
-                for adj in msg.attachments:
-                    f.write(f"    [ADJUNTO] {adj.url}\n")
+                    for adj in msg.attachments:
+                        f.write(f"    [ADJUNTO] {adj.url}\n")
 
-                for st in msg.stickers:
-                    f.write(f"    [STICKER] {st.name}\n")
+            except Exception as e:
+                print("⚠️ Error leyendo historial (transcript):", e)
+                f.write("\n[ERROR] No se pudo leer todo el historial.\n")
 
         return transcript_path
 
+    # ============================================================
+    #   LOG SEGURO (NO BLOQUEA)
+    # ============================================================
     async def enviar_log(
         self,
         guild: discord.Guild,
@@ -59,30 +67,28 @@ class Logs(commands.Cog):
     ):
         print("➡️ enviar_log llamado correctamente")
 
+        # Cargar config
         config = load_json(CONFIG_PATH)
         guild_cfg = config.get(str(guild.id), {})
 
         panel_id = str(ticket_data["panel_id"])
-        panel_cfg = guild_cfg.get(panel_id)
-
-        if not panel_cfg:
-            print("❌ panel_cfg no encontrado")
-            panel_cfg = guild_cfg.get(ticket_data["panel_id"], {})
+        panel_cfg = guild_cfg.get(panel_id, {})
 
         logs_id = panel_cfg.get("logs_id")
         print("logs_id =", logs_id)
 
         if not logs_id:
-            print("❌ logs_id no existe")
+            print("❌ No hay logs_id configurado")
             return
 
         canal_logs = guild.get_channel(logs_id)
         print("canal_logs =", canal_logs)
 
         if not canal_logs:
-            print("❌ canal_logs no encontrado")
+            print("❌ Canal de logs no encontrado")
             return
 
+        # Datos del ticket
         usuario = guild.get_member(ticket_data["usuario_id"])
         staff = guild.get_member(ticket_data.get("reclamado_por")) if ticket_data.get("reclamado_por") else None
 
@@ -90,13 +96,22 @@ class Logs(commands.Cog):
         fecha_ci = datetime.datetime.utcnow()
         duracion = fecha_ci - fecha_ap
 
-        staff_roles = panel_cfg.get("staff_roles", [])
+        # ============================================================
+        #   CONTAR MENSAJES DEL STAFF (SEGURO)
+        # ============================================================
         staff_msgs = 0
+        staff_roles = panel_cfg.get("staff_roles", [])
 
-        async for msg in canal_ticket.history(limit=None):
-            if any(r.id in staff_roles for r in msg.author.roles):
-                staff_msgs += 1
+        try:
+            async for msg in canal_ticket.history(limit=300):
+                if any(r.id in staff_roles for r in getattr(msg.author, "roles", [])):
+                    staff_msgs += 1
+        except Exception as e:
+            print("⚠️ Error leyendo historial (staff_msgs):", e)
 
+        # ============================================================
+        #   VALORACIONES
+        # ============================================================
         ratings = load_json(RATINGS_PATH)
         valoraciones = ratings.get(str(canal_ticket.id), [])
 
@@ -110,40 +125,73 @@ class Logs(commands.Cog):
             estrellas = "Sin valoración"
             comentario = "—"
 
-        transcript_path = await self.generar_transcript(canal_ticket)
+        # ============================================================
+        #   DETECTAR SI EL CANAL SE BORRA ANTES DEL TRANSCRIPT
+        # ============================================================
+        print("🟦 Comprobando si el canal sigue existiendo ANTES del transcript...")
 
+        try:
+            _ = canal_ticket.id
+            print("🟩 El canal SIGUE existiendo antes del transcript.")
+        except:
+            print("🟥 El canal YA NO EXISTE antes del transcript (se borró demasiado pronto).")
+
+        # ============================================================
+        #   TRANSCRIPT (SEGURO)
+        # ============================================================
+        try:
+            transcript_path = await self.generar_transcript(canal_ticket)
+        except Exception as e:
+            print("⚠️ Error generando transcript:", e)
+            transcript_path = None
+
+        print("🟦 Comprobando si el canal sigue existiendo DESPUÉS del transcript...")
+
+        try:
+            _ = canal_ticket.id
+            print("🟩 El canal SIGUE existiendo después del transcript.")
+        except:
+            print("🟥 El canal YA NO EXISTE después del transcript.")
+
+        # ============================================================
+        #   EMBED
+        # ============================================================
         embed = discord.Embed(
-            title="📘 Registro Completo del Ticket",
-            description="Ticket cerrado y archivado correctamente.",
-            color=discord.Color.from_rgb(52, 152, 219),
+            title="📘 Registro del Ticket",
+            description="Ticket cerrado correctamente.",
+            color=discord.Color.blue(),
             timestamp=datetime.datetime.utcnow()
         )
 
-        embed.add_field(name="👤 Usuario", value=f"{usuario.mention if usuario else 'Desconocido'} (`{ticket_data['usuario_id']}`)", inline=False)
-        embed.add_field(name="🛠 Staff que atendió", value=staff.mention if staff else "No reclamado", inline=False)
+        embed.add_field(name="👤 Usuario", value=f"{usuario.mention if usuario else 'Desconocido'}", inline=False)
+        embed.add_field(name="🛠 Staff", value=staff.mention if staff else "No reclamado", inline=False)
         embed.add_field(name="🔒 Cerrado por", value=cerrado_por.mention, inline=False)
-        embed.add_field(name="🕒 Fecha de apertura", value=f"<t:{int(fecha_ap.timestamp())}:F>", inline=False)
-        embed.add_field(name="🕒 Fecha de cierre", value=f"<t:{int(fecha_ci.timestamp())}:F>", inline=False)
-        embed.add_field(name="⏳ Duración total", value=str(duracion).split('.')[0], inline=False)
+        embed.add_field(name="🕒 Apertura", value=f"<t:{int(fecha_ap.timestamp())}:F>", inline=False)
+        embed.add_field(name="🕒 Cierre", value=f"<t:{int(fecha_ci.timestamp())}:F>", inline=False)
+        embed.add_field(name="⏳ Duración", value=str(duracion).split('.')[0], inline=False)
         embed.add_field(name="💬 Mensajes del staff", value=str(staff_msgs), inline=False)
-        embed.add_field(name="📝 Razón del cierre", value=razon_cierre, inline=False)
+        embed.add_field(name="📝 Razón", value=razon_cierre, inline=False)
         embed.add_field(name="⭐ Última valoración", value=estrellas, inline=False)
-        embed.add_field(name="💬 Comentario del usuario", value=comentario, inline=False)
-        embed.add_field(name="📊 Valoración media", value=f"{media:.2f}/5 ⭐" if media else "Sin valoraciones", inline=False)
-        embed.add_field(name="📄 Transcript", value="Adjunto abajo", inline=False)
-
-        embed.set_footer(text=f"Ticket ID: {canal_ticket.id}")
+        embed.add_field(name="💬 Comentario", value=comentario, inline=False)
+        embed.add_field(name="📊 Media", value=f"{media:.2f}/5 ⭐" if media else "Sin valoraciones", inline=False)
 
         print("➡️ Enviando embed...")
         await canal_logs.send(embed=embed)
 
-        print("➡️ Enviando transcript...")
-        await canal_logs.send(
-            f"📄 Transcript del ticket `{canal_ticket.name}`",
-            file=discord.File(transcript_path)
-        )
+        # ============================================================
+        #   ENVIAR TRANSCRIPT (SI EXISTE)
+        # ============================================================
+        if transcript_path:
+            print("➡️ Enviando transcript...")
+            try:
+                await canal_logs.send(
+                    f"📄 Transcript del ticket `{canal_ticket.name}`",
+                    file=discord.File(transcript_path)
+                )
+            except Exception as e:
+                print("⚠️ Error enviando transcript:", e)
 
         print("✅ Log enviado correctamente")
 
 async def setup(bot):
-    await bot.add_cog(Logs(bot))
+    await bot.add_cog(Logs(bot)) 
