@@ -672,17 +672,17 @@ class Tickets(commands.Cog):
 
         # LOGS (si falla, ignorar)
         logs_cog = self.bot.get_cog("Logs")
-        if logs_cog:
-            try:
-                await logs_cog.enviar_log(
-                    guild=guild,
-                    canal_ticket=canal,
-                    ticket_data=ticket_data,
-                    razon_cierre=razon,
-                    cerrado_por=usuario
-                )
-            except:
-                pass
+if logs_cog:
+    try:
+        await logs_cog.enviar_log(
+            guild=guild,
+            canal_ticket=canal,
+            ticket_data=ticket_data,
+            razon_cierre=razon,
+            cerrado_por=usuario
+        )
+    except Exception as e:
+        print("❌ ERROR EN LOGS:", e)
 
         # BORRAR DEL JSON
         del tickets[canal_id]
