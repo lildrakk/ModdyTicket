@@ -653,50 +653,52 @@ class Tickets(commands.Cog):
             ephemeral=True
         )
 
-    # ============================================================
+# ============================================================
 #   CIERRE DEFINITIVO (CORREGIDO)
 # ============================================================
 
-async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
+    async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
 
-    canal = interaction.channel
-    canal_id = str(canal.id)
-    usuario = interaction.user
-    guild = interaction.guild
+        canal = interaction.channel
+        canal_id = str(canal.id)
+        usuario = interaction.user
+        guild = interaction.guild
 
-    tickets = load_json(TICKETS_PATH)
-    ticket_data = tickets.get(canal_id)
+        tickets = load_json(TICKETS_PATH)
+        ticket_data = tickets.get(canal_id)
 
-    if not ticket_data:
-        return
+        if not ticket_data:
+            return
 
-    # LOGS (si falla, mostrar error pero NO romper)
-    logs_cog = self.bot.get_cog("Logs")
-    if logs_cog:
+        # LOGS (si falla, mostrar error pero NO romper)
+        logs_cog = self.bot.get_cog("Logs")
+        if logs_cog:
+            try:
+                await logs_cog.enviar_log(
+                    guild=guild,
+                    canal_ticket=canal,
+                    ticket_data=ticket_data,
+                    razon_cierre=razon,
+                    cerrado_por=usuario
+                )
+            except Exception as e:
+                print("❌ ERROR EN LOGS:", e)
+
+        # BORRAR DEL JSON
+        del tickets[canal_id]
+        save_json(TICKETS_PATH, tickets)
+
+        # MENSAJE FINAL
         try:
-            await logs_cog.enviar_log(
-                guild=guild,
-                canal_ticket=canal,
-                ticket_data=ticket_data,
-                razon_cierre=razon,
-                cerrado_por=usuario
-            )
-        except Exception as e:
-            print("❌ ERROR EN LOGS:", e)
+            await canal.send(f"🔒 Ticket cerrado por {usuario.mention}.\n📝 Razón: {razon}")
+        except:
+            pass
 
-    # ============================================================
-    #   BORRAR DEL JSON (SIEMPRE)
-    # ============================================================
-    del tickets[canal_id]
-    save_json(TICKETS_PATH, tickets)
-
-    # ============================================================
-    #   MENSAJE FINAL (NO obligatorio)
-    # ============================================================
-    try:
-        await canal.send(f"🔒 Ticket cerrado por {usuario.mention}.\n📝 Razón: {razon}")
-    except:
-        pass
+        # BORRAR CANAL
+        try:
+            await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
+        except:
+            pass
 
     # ============================================================
     #   BORRAR CANAL (SIEMPRE)
