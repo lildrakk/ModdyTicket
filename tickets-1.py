@@ -115,39 +115,41 @@ class BotonCerrarTicket(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
 
-    await interaction.response.defer(ephemeral=True)
+        # Siempre defer primero
+        await interaction.response.defer(ephemeral=True)
 
-    canal_id = str(interaction.channel.id)
-    tickets = load_json(TICKETS_PATH)
-    ticket = tickets.get(canal_id)
+        canal_id = str(interaction.channel.id)
+        tickets = load_json(TICKETS_PATH)
+        ticket = tickets.get(canal_id)
 
-    if not ticket:
-        return await interaction.followup.send("❌ No se encontró información del ticket.", ephemeral=True)
+        if not ticket:
+            return await interaction.followup.send("❌ No se encontró información del ticket.", ephemeral=True)
 
-    cog: "Tickets" = interaction.client.get_cog("Tickets")
-    config = cog.get_config(interaction.guild.id, ticket["panel_id"])
+        cog: "Tickets" = interaction.client.get_cog("Tickets")
+        config = cog.get_config(interaction.guild.id, ticket["panel_id"])
 
-    # Solo STAFF
-    if not any(r.id in config["staff_roles"] for r in interaction.user.roles):
-        return await interaction.followup.send("❌ Solo el staff puede cerrar tickets.", ephemeral=True)
+        # Solo STAFF
+        if not any(r.id in config["staff_roles"] for r in interaction.user.roles):
+            return await interaction.followup.send("❌ Solo el staff puede cerrar tickets.", ephemeral=True)
 
-    # Si NO está reclamado → confirmación directa
-    if not ticket.get("reclamado_por"):
-        embed = discord.Embed(
-            title="⚠️ Ticket no reclamado",
-            description="Este ticket **no fue reclamado**.\n\n¿Seguro que quieres cerrarlo?",
-            color=discord.Color.orange()
+        # Si NO está reclamado → confirmación directa
+        if not ticket.get("reclamado_por"):
+            embed = discord.Embed(
+                title="⚠️ Ticket no reclamado",
+                description="Este ticket **no fue reclamado**.\n\n¿Seguro que quieres cerrarlo?",
+                color=discord.Color.orange()
+            )
+            view = discord.ui.View(timeout=None)
+            view.add_item(BotonCerrarDefinitivo(cog, canal_id))
+            return await interaction.followup.send(embed=embed, view=view)
+
+        # Si está reclamado → selector + cerrar sin valorar
+        view = SelectorStaff(cog, canal_id)
+        await interaction.followup.send(
+            "⭐ Selecciona quién te atendió o cierra sin valorar:",
+            view=view
         )
-        view = discord.ui.View(timeout=None)
-        view.add_item(BotonCerrarDefinitivo(cog, canal_id))
-        return await interaction.followup.send(embed=embed, view=view)
-
-    # Si está reclamado → selector + cerrar sin valorar
-    view = SelectorStaff(cog, canal_id)
-    await interaction.followup.send(
-        "⭐ Selecciona quién te atendió o cierra sin valorar:",
-        view=view
-    )
+    
 
 
 class BotonReclamar(discord.ui.Button):
