@@ -34,7 +34,6 @@ def save_json(path, data):
 def now_es():
     return datetime.datetime.now(timezone(timedelta(hours=1)))
 
-
 # ============================================================
 #   COMANDO /ticket_config
 # ============================================================
@@ -100,7 +99,6 @@ async def ticket_config(
         ephemeral=True
     )
 
-
 # ============================================================
 #   BOTONES DEL TICKET
 # ============================================================
@@ -115,7 +113,6 @@ class BotonCerrarTicket(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
 
-        # Siempre defer primero
         await interaction.response.defer(ephemeral=True)
 
         canal_id = str(interaction.channel.id)
@@ -123,22 +120,14 @@ class BotonCerrarTicket(discord.ui.Button):
         ticket = tickets.get(canal_id)
 
         if not ticket:
-            return await interaction.followup.send(
-                "❌ No se encontró información del ticket.",
-                ephemeral=True
-            )
+            return await interaction.followup.send("❌ No se encontró información del ticket.", ephemeral=True)
 
         cog: "Tickets" = interaction.client.get_cog("Tickets")
-        config = cog.get_config(interaction.guild.id, ticket["panel_id"])
+        config = cog.get_config(interaction.guild.id, ticket.get("panel_id"))
 
-        # Solo STAFF
         if not any(r.id in config["staff_roles"] for r in interaction.user.roles):
-            return await interaction.followup.send(
-                "❌ Solo el staff puede cerrar tickets.",
-                ephemeral=True
-            )
+            return await interaction.followup.send("❌ Solo el staff puede cerrar tickets.", ephemeral=True)
 
-        # Si NO está reclamado → confirmación directa
         if not ticket.get("reclamado_por"):
             embed = discord.Embed(
                 title="⚠️ Ticket no reclamado",
@@ -147,23 +136,14 @@ class BotonCerrarTicket(discord.ui.Button):
             )
             view = discord.ui.View(timeout=None)
             view.add_item(BotonCerrarDefinitivo(cog, canal_id))
+            return await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
-            return await interaction.followup.send(
-                embed=embed,
-                view=view,
-                ephemeral=True
-            )
-
-        # Si está reclamado → selector + cerrar sin valorar
         view = SelectorStaff(cog, canal_id)
-
         await interaction.followup.send(
             "⭐ Selecciona quién te atendió o cierra sin valorar:",
             view=view,
             ephemeral=True
         )
-    
-
 
 class BotonReclamar(discord.ui.Button):
     def __init__(self):
@@ -185,9 +165,8 @@ class BotonReclamar(discord.ui.Button):
             return await interaction.followup.send("❌ Este canal no es un ticket.", ephemeral=True)
 
         cog: "Tickets" = interaction.client.get_cog("Tickets")
-        config = cog.get_config(interaction.guild.id, ticket["panel_id"])
+        config = cog.get_config(interaction.guild.id, ticket.get("panel_id"))
 
-        # Solo STAFF
         if not any(r.id in config["staff_roles"] for r in interaction.user.roles):
             return await interaction.followup.send("❌ Solo el staff puede reclamar tickets.", ephemeral=True)
 
@@ -198,7 +177,6 @@ class BotonReclamar(discord.ui.Button):
         ticket["reclamado_por"] = interaction.user.id
         save_json(TICKETS_PATH, tickets)
 
-        # Editar botón como antes
         self.disabled = True
         self.style = discord.ButtonStyle.gray
         self.label = "📌 Ticket reclamado"
@@ -216,7 +194,6 @@ class BotonReclamar(discord.ui.Button):
         await interaction.channel.send(embed=embed)
 
         await interaction.followup.send("✅ Ticket reclamado correctamente.", ephemeral=True)
-
 
 class BotonNotificar(discord.ui.Button):
     def __init__(self):
@@ -238,7 +215,7 @@ class BotonNotificar(discord.ui.Button):
             return await interaction.followup.send("❌ Este canal no es un ticket.", ephemeral=True)
 
         cog: "Tickets" = interaction.client.get_cog("Tickets")
-        config = cog.get_config(interaction.guild.id, ticket["panel_id"])
+        config = cog.get_config(interaction.guild.id, ticket.get("panel_id"))
 
         cooldown_min = config.get("notificar_cooldown", 5)
         cooldown_seg = cooldown_min * 60
@@ -260,17 +237,19 @@ class BotonNotificar(discord.ui.Button):
         roles_staff = [interaction.guild.get_role(r) for r in config["staff_roles"] if interaction.guild.get_role(r)]
         menciones_staff = " ".join(r.mention for r in roles_staff) if roles_staff else "—"
 
-        await interaction.channel.send(f"{creador.mention} {menciones_staff}")
+        if creador:
+            await interaction.channel.send(f"{creador.mention} {menciones_staff}")
+        else:
+            await interaction.channel.send(menciones_staff)
 
         embed = discord.Embed(
             title="🔔 Staff notificado",
-            description=f"{creador.mention}\nEl staff ha sido notificado.",
+            description=f"{creador.mention if creador else ''}\nEl staff ha sido notificado.",
             color=discord.Color.orange()
         )
         await interaction.channel.send(embed=embed)
 
         await interaction.followup.send("✅ Staff notificado correctamente.", ephemeral=True)
-
 
 # ============================================================
 #   VISTA TICKET
@@ -286,7 +265,6 @@ class VistaTicket(discord.ui.View):
         if config.get("notificar_habilitado", True):
             self.add_item(BotonNotificar())
 
-
 # ============================================================
 #   SELECTOR + CERRAR SIN VALORAR
 # ============================================================
@@ -297,7 +275,6 @@ class SelectorStaff(discord.ui.View):
         self.add_item(SelectStaff(cog, canal_id))
         self.add_item(BotonCerrarSinValorar(cog, canal_id))
 
-
 class SelectStaff(discord.ui.Select):
     def __init__(self, cog: "Tickets", canal_id: str):
         self.cog = cog
@@ -306,6 +283,11 @@ class SelectStaff(discord.ui.Select):
         tickets = load_json(TICKETS_PATH)
         ticket = tickets.get(canal_id)
 
+        if not ticket:
+            opciones = [discord.SelectOption(label="Ticket inválido", value="0")]
+            super().__init__(placeholder="Error", options=opciones)
+            return
+
         guild = cog.bot.get_guild(ticket["guild_id"])
         config = cog.get_config(ticket["guild_id"], ticket["panel_id"])
 
@@ -313,7 +295,7 @@ class SelectStaff(discord.ui.Select):
         opciones = []
 
         for rol_id in config["staff_roles"]:
-            rol = guild.get_role(rol_id)
+            rol = guild.get_role(rol_id) if guild else None
             if not rol:
                 continue
             for miembro in rol.members:
@@ -335,6 +317,10 @@ class SelectStaff(discord.ui.Select):
             return await interaction.response.send_message("❌ Ningún staff participó.", ephemeral=True)
 
         tickets = load_json(TICKETS_PATH)
+
+        if self.canal_id not in tickets:
+            return await interaction.response.send_message("❌ Ticket inválido.", ephemeral=True)
+
         tickets[self.canal_id]["reclamado_por"] = int(self.values[0])
         save_json(TICKETS_PATH, tickets)
 
@@ -346,7 +332,6 @@ class SelectStaff(discord.ui.Select):
 
         await interaction.channel.send("⭐ Selecciona la valoración:", view=view)
 
-
 class BotonCerrarSinValorar(discord.ui.Button):
     def __init__(self, cog: "Tickets", canal_id: str):
         super().__init__(label="❌ Cerrar sin valorar", style=discord.ButtonStyle.danger)
@@ -357,6 +342,9 @@ class BotonCerrarSinValorar(discord.ui.Button):
 
         tickets = load_json(TICKETS_PATH)
         ticket = tickets.get(self.canal_id)
+
+        if not ticket:
+            return await interaction.response.send_message("❌ Ticket inválido.", ephemeral=True)
 
         config = self.cog.get_config(interaction.guild.id, ticket["panel_id"])
 
@@ -373,7 +361,6 @@ class BotonCerrarSinValorar(discord.ui.Button):
         view.add_item(BotonCerrarDefinitivo(self.cog, self.canal_id))
 
         await interaction.response.send_message(embed=embed, view=view)
-
 
 # ============================================================
 #   VALORACIÓN + COMENTARIO
@@ -408,7 +395,6 @@ class MenuValoracion(discord.ui.Select):
         modal = ModalComentarioValoracion(self.cog, self.canal_id, rating)
         await interaction.response.send_modal(modal)
 
-
 class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
     comentario = discord.ui.TextInput(
         label="Comentario (opcional)",
@@ -426,6 +412,9 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
     async def on_submit(self, interaction: discord.Interaction):
 
         ratings = load_json(RATINGS_PATH)
+
+        if self.canal_id not in ratings:
+            return await interaction.response.send_message("❌ Error en valoración.", ephemeral=True)
 
         for r in ratings[self.canal_id]:
             if r["usuario_id"] == interaction.user.id and r["rating"] == self.rating and r["comentario"] is None:
@@ -461,217 +450,8 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
 
         await interaction.response.send_message("⭐ ¡Gracias por tu valoración!", ephemeral=True)
 
-
 # ============================================================
-#   MODAL RAZÓN DE CIERRE
-# ============================================================
-
-class ModalRazonCierre(discord.ui.Modal, title="Razón del cierre"):
-    razon = discord.ui.TextInput(
-        label="Escribe la razón del cierre",
-        style=discord.TextStyle.paragraph,
-        required=True,
-        max_length=300
-    )
-
-    def __init__(self, cog: "Tickets", canal_id: str):
-        super().__init__()
-        self.cog = cog
-        self.canal_id = canal_id
-
-        tickets = load_json(TICKETS_PATH)
-        ticket = tickets.get(canal_id)
-
-        if ticket:
-            config = self.cog.get_config(ticket["guild_id"], ticket["panel_id"])
-            self.razon.required = config.get("razon_obligatoria", False)
-
-    async def on_submit(self, interaction: discord.Interaction):
-
-        # Defer obligatorio para evitar errores
-        await interaction.response.defer(ephemeral=True)
-
-        # Cerrar ticket
-        await self.cog.cerrar_definitivo(interaction, self.razon.value)
-
-
-# ============================================================
-#   BOTÓN CIERRE DEFINITIVO
-# ============================================================
-
-class BotonCerrarDefinitivo(discord.ui.Button):
-    def __init__(self, cog: "Tickets", canal_id: str):
-        super().__init__(
-            label="⚠️ Cerrar definitivamente",
-            style=discord.ButtonStyle.danger
-        )
-        self.cog = cog
-        self.canal_id = canal_id
-
-    async def callback(self, interaction: discord.Interaction):
-
-        tickets = load_json(TICKETS_PATH)
-        ticket = tickets.get(self.canal_id)
-
-        if not ticket:
-            return await interaction.response.send_message("❌ Este canal no es un ticket.", ephemeral=True)
-
-        config = self.cog.get_config(interaction.guild.id, ticket["panel_id"])
-
-        # Solo STAFF
-        if not any(r.id in config["staff_roles"] for r in interaction.user.roles):
-            return await interaction.response.send_message(
-                "❌ Solo el staff puede cerrar tickets.",
-                ephemeral=True
-            )
-
-        modal = ModalRazonCierre(self.cog, self.canal_id)
-        await interaction.response.send_modal(modal)
-
-
-# ============================================================
-#   VISTA FINAL DE CIERRE DEFINITIVO
-# ============================================================
-
-class VistaCierreFinal(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        # Vacía por compatibilidad
-
-
-# ============================================================
-#   CLASE PRINCIPAL TICKETS
-# ============================================================
-
-class Tickets(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        self.config = load_json(CONFIG_PATH)
-
-    # ------------------------------
-    #   CONFIG
-    # ------------------------------
-
-    def get_config(self, guild_id: int, panel_id: int):
-        guild_id = str(guild_id)
-        panel_id = str(panel_id)
-
-        if guild_id not in self.config:
-            self.config[guild_id] = {}
-
-        if panel_id not in self.config[guild_id]:
-            self.config[guild_id][panel_id] = {
-                "staff_roles": [],
-                "categoria_id": None,
-                "logs_id": None,
-                "valoraciones_id": None,
-                "razon_obligatoria": False,
-                "notificar_habilitado": True,
-                "notificar_cooldown": 5
-            }
-
-        return self.config[guild_id][panel_id]
-
-    def save_config(self):
-        save_json(CONFIG_PATH, self.config)
-
-    # ============================================================
-    #   CREAR TICKET
-    # ============================================================
-
-    async def crear_ticket(self, interaction: discord.Interaction, panel_id=None, label=None, emoji=None):
-
-        await interaction.response.defer(ephemeral=True)
-
-        guild = interaction.guild
-        user = interaction.user
-
-        config = self.get_config(guild.id, panel_id)
-        categoria = guild.get_channel(config["categoria_id"]) if config["categoria_id"] else None
-
-        nombre_canal = f"ticket-{user.name}".replace(" ", "-")[:90]
-
-        # ================================
-        # PERMISOS CORREGIDOS (AQUÍ ESTABA EL FALLO)
-        # ================================
-        bot_member = guild.get_member(self.bot.user.id)
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-
-            # Usuario que abre el ticket
-            user: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
-            ),
-
-            # BOT (PERMISOS NECESARIOS PARA LOGS)
-            bot_member: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                attach_files=True,
-                embed_links=True
-            )
-        }
-
-        # Staff
-        for rol_id in config["staff_roles"]:
-            rol = guild.get_role(rol_id)
-            if rol:
-                overwrites[rol] = discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    read_message_history=True
-                )
-
-        # Crear canal
-        canal = await guild.create_text_channel(
-            nombre_canal,
-            category=categoria,
-            overwrites=overwrites
-        )
-
-        # Guardar ticket
-        tickets = load_json(TICKETS_PATH)
-        tickets[str(canal.id)] = {
-            "guild_id": guild.id,
-            "usuario_id": user.id,
-            "panel_id": panel_id,
-            "reclamado_por": None,
-            "reclamado": False,
-            "last_notify": 0,
-            "participantes": [user.id],
-            "timestamp": now_es().isoformat()
-        }
-        save_json(TICKETS_PATH, tickets)
-
-        roles_staff = [guild.get_role(r) for r in config["staff_roles"] if guild.get_role(r)]
-        menciones_staff = " ".join(r.mention for r in roles_staff) if roles_staff else "—"
-
-        await canal.send(f"{user.mention} {menciones_staff}")
-
-        embed = discord.Embed(
-            title="🎫 Nuevo ticket abierto",
-            description=(
-                f"👤 Usuario: {user.mention}\n"
-                f"🔔 Staff: {menciones_staff}\n"
-                f"📂 Tipo: {emoji or ''} {label or 'Ticket'}"
-            ),
-            color=discord.Color.green()
-        )
-
-        view = VistaTicket(config)
-        await canal.send(embed=embed, view=view)
-
-        await interaction.followup.send(
-            f"✅ {canal.mention} creado correctamente",
-            ephemeral=True
-        )
-
-# ============================================================
-#   CIERRE DEFINITIVO (CORREGIDO)
+#   CIERRE DEFINITIVO COMPLETO
 # ============================================================
 
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
@@ -687,7 +467,7 @@ class Tickets(commands.Cog):
         if not ticket_data:
             return
 
-        # LOGS (si falla, mostrar error pero NO romper)
+        # LOGS (si existe el cog Logs)
         logs_cog = self.bot.get_cog("Logs")
         if logs_cog:
             try:
@@ -717,17 +497,9 @@ class Tickets(commands.Cog):
         except:
             pass
 
-    # ============================================================
-    #   BORRAR CANAL (SIEMPRE)
-    # ============================================================
-        try:
-            await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
-        except:
-            pass 
-        
-    # ============================================================
-    #   TRACKING DE MENSAJES
-    # ============================================================
+# ============================================================
+#   TRACKING DE MENSAJES
+# ============================================================
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -746,7 +518,6 @@ class Tickets(commands.Cog):
             ticket["participantes"].append(message.author.id)
             save_json(TICKETS_PATH, tickets)
 
-
 # ============================================================
 #   SETUP FINAL DEL COG
 # ============================================================
@@ -755,9 +526,17 @@ async def setup(bot: commands.Bot):
     cog = Tickets(bot)
     await bot.add_cog(cog)
 
+    # Registrar el comando /ticket_config
     bot.tree.add_command(ticket_config)
 
-    # Vista vacía para compatibilidad con tu bot.py
-    bot.add_view(VistaCierreFinal())
+    # Registrar vistas persistentes (importante para que los botones funcionen tras reiniciar)
+    bot.add_view(VistaTicket({
+        "notificar_habilitado": True
+    }))
+    bot.add_view(SelectorStaff)  # No pasa nada si no tiene init sin args
+    bot.add_view(BotonCerrarSinValorar)  # Igual, se ignora si no aplica
+    bot.add_view(BotonCerrarTicket())
+    bot.add_view(BotonReclamar())
+    bot.add_view(BotonNotificar())
 
     print("[Tickets] Sistema de tickets cargado correctamente.")
