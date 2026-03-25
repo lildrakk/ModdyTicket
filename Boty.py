@@ -51,16 +51,11 @@ class TicketBot(commands.Bot):
                 traceback.print_exc()
 
         # --------------------------------------------------------
-        #   REGISTRAR VISTAS PERSISTENTES
+        #   REGISTRAR VISTAS PERSISTENTES (TICKETS)
         # --------------------------------------------------------
         try:
-            from cogs.tickets import VistaCierreFinal, VistaTicket
-            self.add_view(VistaCierreFinal())
-            print("🛠️ VistaCierreFinal registrada.")
-
-            self.add_view(VistaTicket({
-                "notificar_habilitado": True
-            }))
+            from cogs.tickets import VistaTicket
+            self.add_view(VistaTicket({"notificar_habilitado": True}))
             print("🛠️ VistaTicket registrada.")
         except Exception:
             print("❌ Error registrando vistas de tickets:")
@@ -154,4 +149,4 @@ async def main():
 #   EJECUTAR BOT
 # ============================================================
 
-asyncio.run(main()) 
+asyncio.run(main())
