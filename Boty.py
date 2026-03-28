@@ -5,6 +5,14 @@ from discord.ext import commands
 import json
 import asyncio
 import traceback
+import logging
+
+# ============================================================
+#   LOGGING COMPLETO
+# ============================================================
+
+logging.basicConfig(level=logging.DEBUG)
+discord.utils.setup_logging(level=logging.DEBUG)
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
@@ -46,8 +54,8 @@ class TicketBot(commands.Bot):
             try:
                 await self.load_extension(cog)
                 print(f"📦 COG cargado: {cog}")
-            except Exception:
-                print(f"\n❌ ERROR cargando {cog}:")
+            except Exception as e:
+                print(f"\n❌ ERROR cargando {cog}: {e}")
                 traceback.print_exc()
 
         # --------------------------------------------------------
@@ -66,8 +74,8 @@ class TicketBot(commands.Bot):
                         self.add_view(VistaPanelMenu(panel_id, panel["menu"]))
 
             print("🛠️ Vistas persistentes de paneles registradas.")
-        except Exception:
-            print("❌ Error registrando vistas de paneles:")
+        except Exception as e:
+            print("❌ Error registrando vistas de paneles:", e)
             traceback.print_exc()
 
         # --------------------------------------------------------
@@ -76,8 +84,8 @@ class TicketBot(commands.Bot):
         try:
             synced = await self.tree.sync()
             print(f"🪄 {len(synced)} comandos sincronizados.")
-        except Exception:
-            print("❌ Error sincronizando comandos:")
+        except Exception as e:
+            print("❌ Error sincronizando comandos:", e)
             traceback.print_exc()
 
 
@@ -102,8 +110,8 @@ async def on_command_error(ctx, error):
 
     try:
         await ctx.reply("❌ Ocurrió un error ejecutando este comando.")
-    except:
-        pass
+    except Exception as e:
+        print("❌ Error enviando mensaje de error:", e)
 
 @bot.tree.error
 async def on_app_command_error(interaction, error):
@@ -115,8 +123,8 @@ async def on_app_command_error(interaction, error):
             "❌ Ocurrió un error ejecutando este comando.",
             ephemeral=True
         )
-    except:
-        pass
+    except Exception as e:
+        print("❌ Error enviando mensaje de error:", e)
 
 @bot.event
 async def on_error(event, *args, **kwargs):
@@ -130,8 +138,8 @@ async def on_error(event, *args, **kwargs):
 async def main():
     try:
         await bot.start(TOKEN)
-    except Exception:
-        print("\n❌ ERROR AL INICIAR EL BOT:")
+    except Exception as e:
+        print("\n❌ ERROR AL INICIAR EL BOT:", e)
         traceback.print_exc()
 
 # ============================================================
