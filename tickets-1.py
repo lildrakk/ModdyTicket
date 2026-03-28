@@ -276,8 +276,7 @@ class VistaTicket(discord.ui.View):
         self.add_item(BotonCerrarTicket())
 
         if config.get("notificar_habilitado", True):
-            self.add_item(BotonNotificar()) 
-
+            self.add_item(BotonNotificar())
 
 # ============================================================
 #   SELECTOR + CERRAR SIN VALORAR
@@ -501,8 +500,8 @@ class Tickets(commands.Cog):
         save_json(CONFIG_PATH, self.config)
 
     # ============================================================
-    #   CIERRE DEFINITIVO
-    # ============================================================
+#   CIERRE DEFINITIVO (SIN TRY/EXCEPT SILENCIOSOS)
+# ============================================================
 
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
 
@@ -517,39 +516,30 @@ class Tickets(commands.Cog):
         if not ticket_data:
             return
 
-        # LOGS
+        # LOGS (SIN TRY/EXCEPT)
         logs_cog = self.bot.get_cog("Logs")
         if logs_cog:
-            try:
-                await logs_cog.enviar_log(
-                    guild=guild,
-                    canal_ticket=canal,
-                    ticket_data=ticket_data,
-                    razon_cierre=razon,
-                    cerrado_por=usuario
-                )
-            except Exception as e:
-                print("❌ ERROR EN LOGS:", e)
+            await logs_cog.enviar_log(
+                guild=guild,
+                canal_ticket=canal,
+                ticket_data=ticket_data,
+                razon_cierre=razon,
+                cerrado_por=usuario
+            )
 
         # BORRAR DEL JSON
         del tickets[canal_id]
         save_json(TICKETS_PATH, tickets)
 
-        # MENSAJE FINAL
-        try:
-            await canal.send(f"🔒 Ticket cerrado por {usuario.mention}.\n📝 Razón: {razon}")
-        except:
-            pass
+        # MENSAJE FINAL (SIN TRY/EXCEPT)
+        await canal.send(f"🔒 Ticket cerrado por {usuario.mention}.\n📝 Razón: {razon}")
 
-        # BORRAR CANAL
-        try:
-            await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
-        except:
-            pass
+        # BORRAR CANAL (SIN TRY/EXCEPT)
+        await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
 
-    # ============================================================
-    #   TRACKING DE MENSAJES
-    # ============================================================
+# ============================================================
+#   TRACKING DE MENSAJES
+# ============================================================
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -577,10 +567,5 @@ async def setup(bot: commands.Bot):
     await bot.add_cog(cog)
 
     bot.tree.add_command(ticket_config)
-
-    # Registrar vistas persistentes
-    bot.add_view(BotonCerrarTicket())
-    bot.add_view(BotonReclamar())
-    bot.add_view(BotonNotificar())
 
     print("[Tickets] Sistema de tickets cargado correctamente.")
