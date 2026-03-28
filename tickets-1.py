@@ -103,6 +103,17 @@ async def ticket_config(
 #   BOTONES DEL TICKET
 # ============================================================
 
+class BotonCerrarDefinitivo(discord.ui.Button):
+    def __init__(self, cog, canal_id):
+        super().__init__(label="🔒 Cerrar definitivamente", style=discord.ButtonStyle.danger)
+        self.cog = cog
+        self.canal_id = canal_id
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        await self.cog.cerrar_definitivo(interaction, razon="Cierre definitivo manual")
+
+
 class BotonCerrarTicket(discord.ui.Button):
     def __init__(self):
         super().__init__(
@@ -128,6 +139,7 @@ class BotonCerrarTicket(discord.ui.Button):
         if not any(r.id in config["staff_roles"] for r in interaction.user.roles):
             return await interaction.followup.send("❌ Solo el staff puede cerrar tickets.", ephemeral=True)
 
+        # NO RECLAMADO → AVISO + BOTÓN CERRAR SIN VALORAR
         if not ticket.get("reclamado_por"):
             embed = discord.Embed(
                 title="⚠️ Ticket no reclamado",
@@ -135,9 +147,10 @@ class BotonCerrarTicket(discord.ui.Button):
                 color=discord.Color.orange()
             )
             view = discord.ui.View(timeout=None)
-            view.add_item(BotonCerrarDefinitivo(cog, canal_id))
+            view.add_item(BotonCerrarSinValorar(cog, canal_id))
             return await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
+        # RECLAMADO → SELECTOR DE STAFF
         view = SelectorStaff(cog, canal_id)
         await interaction.followup.send(
             "⭐ Selecciona quién te atendió o cierra sin valorar:",
@@ -263,7 +276,8 @@ class VistaTicket(discord.ui.View):
         self.add_item(BotonCerrarTicket())
 
         if config.get("notificar_habilitado", True):
-            self.add_item(BotonNotificar())
+            self.add_item(BotonNotificar()) 
+
 
 # ============================================================
 #   SELECTOR + CERRAR SIN VALORAR
@@ -451,8 +465,44 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
         await interaction.response.send_message("⭐ ¡Gracias por tu valoración!", ephemeral=True)
 
 # ============================================================
-#   CIERRE DEFINITIVO COMPLETO
+#   CLASE PRINCIPAL TICKETS
 # ============================================================
+
+class Tickets(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.config = load_json(CONFIG_PATH)
+
+    # ------------------------------
+    #   CONFIG
+    # ------------------------------
+
+    def get_config(self, guild_id: int, panel_id: int):
+        guild_id = str(guild_id)
+        panel_id = str(panel_id)
+
+        if guild_id not in self.config:
+            self.config[guild_id] = {}
+
+        if panel_id not in self.config[guild_id]:
+            self.config[guild_id][panel_id] = {
+                "staff_roles": [],
+                "categoria_id": None,
+                "logs_id": None,
+                "valoraciones_id": None,
+                "razon_obligatoria": False,
+                "notificar_habilitado": True,
+                "notificar_cooldown": 5
+            }
+
+        return self.config[guild_id][panel_id]
+
+    def save_config(self):
+        save_json(CONFIG_PATH, self.config)
+
+    # ============================================================
+    #   CIERRE DEFINITIVO
+    # ============================================================
 
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
 
@@ -467,7 +517,7 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
         if not ticket_data:
             return
 
-        # LOGS (si existe el cog Logs)
+        # LOGS
         logs_cog = self.bot.get_cog("Logs")
         if logs_cog:
             try:
@@ -497,9 +547,9 @@ class ModalComentarioValoracion(discord.ui.Modal, title="Comentario opcional"):
         except:
             pass
 
-# ============================================================
-#   TRACKING DE MENSAJES
-# ============================================================
+    # ============================================================
+    #   TRACKING DE MENSAJES
+    # ============================================================
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -526,15 +576,9 @@ async def setup(bot: commands.Bot):
     cog = Tickets(bot)
     await bot.add_cog(cog)
 
-    # Registrar el comando /ticket_config
     bot.tree.add_command(ticket_config)
 
-    # Registrar vistas persistentes (importante para que los botones funcionen tras reiniciar)
-    bot.add_view(VistaTicket({
-        "notificar_habilitado": True
-    }))
-    bot.add_view(SelectorStaff)  # No pasa nada si no tiene init sin args
-    bot.add_view(BotonCerrarSinValorar)  # Igual, se ignora si no aplica
+    # Registrar vistas persistentes
     bot.add_view(BotonCerrarTicket())
     bot.add_view(BotonReclamar())
     bot.add_view(BotonNotificar())
