@@ -105,7 +105,11 @@ async def ticket_config(
 
 class BotonCerrarDefinitivo(discord.ui.Button):
     def __init__(self, cog, canal_id):
-        super().__init__(label="🔒 Cerrar definitivamente", style=discord.ButtonStyle.danger)
+        super().__init__(
+            label="🔒 Cerrar definitivamente",
+            style=discord.ButtonStyle.danger,
+            custom_id=f"cerrar_definitivo_{canal_id}"
+        )
         self.cog = cog
         self.canal_id = canal_id
 
@@ -500,7 +504,7 @@ class Tickets(commands.Cog):
         save_json(CONFIG_PATH, self.config)
 
     # ============================================================
-    #   CREAR TICKET (FUNCIÓN QUE FALTABA)
+    #   CREAR TICKET (CON PING + MENSAJE BONITO)
     # ============================================================
 
     async def crear_ticket(self, interaction: discord.Interaction, panel_id: int, label: str, emoji: str = None):
@@ -524,14 +528,12 @@ class Tickets(commands.Cog):
                 ephemeral=True
             )
 
-        # Crear canal
         canal = await guild.create_text_channel(
             name=f"ticket-{usuario.name}",
             category=categoria,
             topic=f"Ticket de {usuario.id}"
         )
 
-        # Guardar en JSON
         tickets = load_json(TICKETS_PATH)
         tickets[str(canal.id)] = {
             "guild_id": guild.id,
@@ -540,11 +542,24 @@ class Tickets(commands.Cog):
             "participantes": [usuario.id],
             "reclamado": False,
             "reclamado_por": None,
-            "last_notify": 0
+            "last_notify": 0,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
         }
         save_json(TICKETS_PATH, tickets)
 
-        # Enviar mensaje inicial
+        roles_staff = [guild.get_role(r) for r in config["staff_roles"] if guild.get_role(r)]
+        menciones_staff = " ".join(r.mention for r in roles_staff) if roles_staff else "—"
+
+        mensaje_bonito = (
+            f"{usuario.mention} {menciones_staff}\n"
+            f"📢 **Nuevo ticket creado**\n"
+            f"👤 **Usuario:** {usuario.mention}\n"
+            f"🛡️ **Staff:** {menciones_staff}\n"
+            f"🎫 **Tipo:** {label}"
+        )
+
+        await canal.send(mensaje_bonito)
+
         embed = discord.Embed(
             title=f"{emoji or ''} {label}",
             description=f"Hola {usuario.mention}, un miembro del staff te atenderá en breve.",
@@ -560,10 +575,6 @@ class Tickets(commands.Cog):
             ephemeral=True
         )
 
-    # ============================================================
-    #   CIERRE DEFINITIVO (SIN TRY/EXCEPT SILENCIOSOS)
-    # ============================================================
-
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
 
         canal = interaction.channel
@@ -577,7 +588,6 @@ class Tickets(commands.Cog):
         if not ticket_data:
             return
 
-        # LOGS (SIN TRY/EXCEPT)
         logs_cog = self.bot.get_cog("Logs")
         if logs_cog:
             await logs_cog.enviar_log(
@@ -588,19 +598,12 @@ class Tickets(commands.Cog):
                 cerrado_por=usuario
             )
 
-        # BORRAR DEL JSON
         del tickets[canal_id]
         save_json(TICKETS_PATH, tickets)
 
-        # MENSAJE FINAL (SIN TRY/EXCEPT)
         await canal.send(f"🔒 Ticket cerrado por {usuario.mention}.\n📝 Razón: {razon}")
 
-        # BORRAR CANAL (SIN TRY/EXCEPT)
         await canal.delete(reason=f"Ticket cerrado por {usuario} — {razon}")
-
-# ============================================================
-#   TRACKING DE MENSAJES
-# ============================================================
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -619,14 +622,10 @@ class Tickets(commands.Cog):
             ticket["participantes"].append(message.author.id)
             save_json(TICKETS_PATH, tickets)
 
-# ============================================================
-#   SETUP FINAL DEL COG
-# ============================================================
-
 async def setup(bot: commands.Bot):
     cog = Tickets(bot)
     await bot.add_cog(cog)
 
     bot.tree.add_command(ticket_config)
 
-    print("[Tickets] Sistema de tickets cargado correctamente.")
+    print("[Tickets] Sistema de tickets cargado correctamente.") 
