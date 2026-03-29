@@ -500,8 +500,69 @@ class Tickets(commands.Cog):
         save_json(CONFIG_PATH, self.config)
 
     # ============================================================
-#   CIERRE DEFINITIVO (SIN TRY/EXCEPT SILENCIOSOS)
-# ============================================================
+    #   CREAR TICKET (FUNCIÓN QUE FALTABA)
+    # ============================================================
+
+    async def crear_ticket(self, interaction: discord.Interaction, panel_id: int, label: str, emoji: str = None):
+
+        guild = interaction.guild
+        usuario = interaction.user
+
+        config = self.get_config(guild.id, panel_id)
+
+        categoria_id = config.get("categoria_id")
+        if not categoria_id:
+            return await interaction.response.send_message(
+                "❌ Este panel no tiene categoría configurada.",
+                ephemeral=True
+            )
+
+        categoria = guild.get_channel(categoria_id)
+        if not categoria:
+            return await interaction.response.send_message(
+                "❌ La categoría configurada no existe.",
+                ephemeral=True
+            )
+
+        # Crear canal
+        canal = await guild.create_text_channel(
+            name=f"ticket-{usuario.name}",
+            category=categoria,
+            topic=f"Ticket de {usuario.id}"
+        )
+
+        # Guardar en JSON
+        tickets = load_json(TICKETS_PATH)
+        tickets[str(canal.id)] = {
+            "guild_id": guild.id,
+            "panel_id": panel_id,
+            "usuario_id": usuario.id,
+            "participantes": [usuario.id],
+            "reclamado": False,
+            "reclamado_por": None,
+            "last_notify": 0
+        }
+        save_json(TICKETS_PATH, tickets)
+
+        # Enviar mensaje inicial
+        embed = discord.Embed(
+            title=f"{emoji or ''} {label}",
+            description=f"Hola {usuario.mention}, un miembro del staff te atenderá en breve.",
+            color=discord.Color.blue()
+        )
+
+        view = VistaTicket(config)
+
+        await canal.send(embed=embed, view=view)
+
+        await interaction.response.send_message(
+            f"📨 Ticket creado: {canal.mention}",
+            ephemeral=True
+        )
+
+    # ============================================================
+    #   CIERRE DEFINITIVO (SIN TRY/EXCEPT SILENCIOSOS)
+    # ============================================================
 
     async def cerrar_definitivo(self, interaction: discord.Interaction, razon: str):
 
