@@ -66,7 +66,7 @@ class Moderacion(commands.Cog):
         )
 
     # ============================
-    # WARN (NUEVO)
+    # WARN (VERSIÓN ULTRA EXTENDIDA)
     # ============================
 
     @app_commands.command(name="warn", description="Da un warning a un usuario")
@@ -74,7 +74,7 @@ class Moderacion(commands.Cog):
         if not interaction.user.guild_permissions.kick_members:
             return await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
 
-        # Cargar warnings
+        # Cargar base de datos
         try:
             with open("warnings.json", "r") as f:
                 data = json.load(f)
@@ -89,47 +89,132 @@ class Moderacion(commands.Cog):
         if uid not in data[gid]:
             data[gid][uid] = []
 
+        # Registrar warn
+        fecha_raw = discord.utils.utcnow()
+        fecha_formateada = fecha_raw.strftime("%d/%m/%Y • %H:%M UTC")
+
         data[gid][uid].append({
             "moderator": interaction.user.id,
-            "motivo": motivo
+            "motivo": motivo,
+            "fecha": fecha_formateada
         })
 
         with open("warnings.json", "w") as f:
             json.dump(data, f, indent=4)
 
-        # Embed público
+        total_warns = len(data[gid][uid])
+
+        # ============================
+        # EMBED PÚBLICO (ULTRA EXTENDIDO)
+        # ============================
+
         embed_publico = discord.Embed(
-            title="⚠️ Advertencia emitida",
+            title="🟧 Informe Disciplinario — Advertencia Emitida",
             description=(
-                f"El usuario {usuario.mention} ha recibido una advertencia.\n\n"
-                f"**Motivo:** {motivo}\n"
-                f"**Moderador:** {interaction.user.mention}\n\n"
-                "Este aviso queda registrado en el sistema del servidor."
+                f"Se ha registrado una acción disciplinaria para {usuario.mention}.\n"
+                "Este informe contiene todos los detalles relevantes del caso."
             ),
-            color=discord.Color.orange()
+            color=discord.Color.from_rgb(255, 120, 40)
         )
-        embed_publico.set_footer(text=f"ID del usuario: {usuario.id}")
+
+        embed_publico.add_field(
+            name="👤 Usuario sancionado",
+            value=f"{usuario.mention}",
+            inline=False
+        )
+
+        embed_publico.add_field(
+            name="👮 Moderador que aplicó la advertencia",
+            value=f"{interaction.user.mention}",
+            inline=False
+        )
+
+        embed_publico.add_field(
+            name="📄 Motivo detallado",
+            value=motivo,
+            inline=False
+        )
+
+        embed_publico.add_field(
+            name="🕒 Fecha y hora del registro",
+            value=fecha_formateada,
+            inline=False
+        )
+
+        embed_publico.add_field(
+            name="📊 Historial del usuario",
+            value=f"Advertencias acumuladas en este servidor: **{total_warns}**",
+            inline=False
+        )
+
+        embed_publico.add_field(
+            name="📨 Notificación al usuario",
+            value="Se intentó enviar un mensaje privado con los detalles de la advertencia.",
+            inline=False
+        )
+
+        embed_publico.add_field(
+            name="🗂️ Información adicional",
+            value=(
+                "• Este registro ha sido archivado en el sistema interno.\n"
+                "• El equipo de moderación puede revisar este caso en cualquier momento.\n"
+                "• Acciones futuras pueden depender del historial acumulado."
+            ),
+            inline=False
+        )
+
+        embed_publico.set_footer(
+            text=f"ID del usuario: {usuario.id} • Sistema de Moderación Avanzada"
+        )
 
         await interaction.response.send_message(embed=embed_publico)
 
-        # Embed por DM
+        # ============================
+        # EMBED DM (ESTILO QUE TE GUSTÓ)
+        # ============================
+
         embed_dm = discord.Embed(
-            title="⚠️ Has recibido una advertencia",
-            description=(
-                f"Has sido advertido en **{interaction.guild.name}**.\n\n"
-                f"**Motivo:** {motivo}\n"
-                f"**Moderador:** {interaction.user}\n\n"
-                "Por favor, respeta las normas del servidor para evitar sanciones mayores."
-            ),
-            color=discord.Color.red()
+            title="📢 Aviso Importante — Registro Disciplinario",
+            description="Has recibido una advertencia en un servidor.",
+            color=discord.Color.from_rgb(255, 60, 60)
         )
-        embed_dm.set_footer(text="Sistema automático de moderación")
+
+        embed_dm.add_field(
+            name="🏛️ Servidor",
+            value=interaction.guild.name,
+            inline=False
+        )
+
+        embed_dm.add_field(
+            name="📄 Motivo de la advertencia",
+            value=motivo,
+            inline=False
+        )
+
+        embed_dm.add_field(
+            name="👮 Moderador que aplicó la sanción",
+            value=f"{interaction.user} (`{interaction.user.id}`)",
+            inline=False
+        )
+
+        embed_dm.add_field(
+            name="🕒 Fecha del registro",
+            value=fecha_formateada,
+            inline=False
+        )
+
+        embed_dm.add_field(
+            name="📊 Historial del usuario",
+            value=f"Tienes ahora **{total_warns}** advertencias en este servidor.",
+            inline=False
+        )
+
+        embed_dm.set_footer(text="Este mensaje fue enviado automáticamente por el sistema de moderación.")
 
         try:
             await usuario.send(embed=embed_dm)
         except:
-            pass  # Por si tiene DMs cerrados
-
+            pass
     # ============================
     # WARNINGS LIST
     # ============================
