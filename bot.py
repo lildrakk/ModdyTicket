@@ -51,19 +51,7 @@ class TicketBot(commands.Bot):
                 traceback.print_exc()
 
         # --------------------------------------------------------
-        #   REGISTRAR VISTA PERSISTENTE DE TICKETS
-        # --------------------------------------------------------
-        try:
-            from cogs.tickets import VistaTicket
-            # Config mínima para que la vista exista
-            self.add_view(VistaTicket({"notificar_habilitado": True}))
-            print("🛠️ VistaTicket registrada como vista persistente.")
-        except Exception:
-            print("❌ Error registrando VistaTicket persistente:")
-            traceback.print_exc()
-
-        # --------------------------------------------------------
-        #   REGISTRAR VISTAS DE PANELES
+        #   REGISTRAR VISTAS PERSISTENTES DE PANELES
         # --------------------------------------------------------
         try:
             from cogs.panels import cargar_paneles, VistaPanel, VistaPanelMenu
@@ -72,8 +60,10 @@ class TicketBot(commands.Bot):
             for guild_id, guild_panels in data.items():
                 for panel_id, panel in guild_panels.items():
 
+                    # Botones del panel
                     self.add_view(VistaPanel(panel_id, panel))
 
+                    # Menú del panel
                     if "menu" in panel and panel["menu"]:
                         self.add_view(VistaPanelMenu(panel_id, panel["menu"]))
 
