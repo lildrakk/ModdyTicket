@@ -6,21 +6,31 @@ import json
 import asyncio
 import traceback
 
+# IMPORTAR LOS BOTONES PARA LA VIEW PERSISTENTE
+from cogs.tickets import BotonReclamar, BotonCerrarTicket, BotonNotificar
+
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-
-# ============================================================
-#   CARGAR CONFIG
-# ============================================================
 
 with open("config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
 
+intents = discord.Intents.all()
+
 # ============================================================
-#   INTENTS Y BOT
+#   VISTA PERSISTENTE PARA QUE LOS BOTONES NO MUERAN
 # ============================================================
 
-intents = discord.Intents.all()
+class VistaTicketPersistente(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(BotonReclamar())
+        self.add_item(BotonCerrarTicket())
+        self.add_item(BotonNotificar())
+
+# ============================================================
+#   BOT PRINCIPAL
+# ============================================================
 
 class TicketBot(commands.Bot):
     def __init__(self):
@@ -32,9 +42,7 @@ class TicketBot(commands.Bot):
 
     async def setup_hook(self):
 
-        # --------------------------------------------------------
-        #   CARGAR COGS
-        # --------------------------------------------------------
+        # Cargar COGS
         cogs = [
             "cogs.tickets",
             "cogs.panels",
@@ -50,9 +58,7 @@ class TicketBot(commands.Bot):
                 print(f"\n❌ ERROR cargando {cog}:")
                 traceback.print_exc()
 
-        # --------------------------------------------------------
-        #   REGISTRAR VISTAS PERSISTENTES DE PANELES
-        # --------------------------------------------------------
+        # Registrar vistas persistentes de paneles
         try:
             from cogs.panels import cargar_paneles, VistaPanel, VistaPanelMenu
             data = cargar_paneles()
@@ -60,10 +66,8 @@ class TicketBot(commands.Bot):
             for guild_id, guild_panels in data.items():
                 for panel_id, panel in guild_panels.items():
 
-                    # Botones del panel
                     self.add_view(VistaPanel(panel_id, panel))
 
-                    # Menú del panel
                     if "menu" in panel and panel["menu"]:
                         self.add_view(VistaPanelMenu(panel_id, panel["menu"]))
 
@@ -72,9 +76,15 @@ class TicketBot(commands.Bot):
             print("❌ Error registrando vistas de paneles:")
             traceback.print_exc()
 
-        # --------------------------------------------------------
-        #   SINCRONIZAR COMANDOS
-        # --------------------------------------------------------
+        # REGISTRAR LA VISTA PERSISTENTE DE TICKETS
+        try:
+            self.add_view(VistaTicketPersistente())
+            print("🛠️ VistaTicket persistente registrada.")
+        except Exception:
+            print("❌ Error registrando VistaTicket persistente:")
+            traceback.print_exc()
+
+        # Sincronizar comandos
         try:
             synced = await self.tree.sync()
             print(f"🪄 {len(synced)} comandos sincronizados.")
@@ -86,22 +96,17 @@ class TicketBot(commands.Bot):
 bot = TicketBot()
 
 # ============================================================
-#   EVENTO ON_READY
+#   EVENTOS
 # ============================================================
 
 @bot.event
 async def on_ready():
     print(f"✅ Bot conectado como {bot.user}")
 
-# ============================================================
-#   SISTEMA DE ERRORES
-# ============================================================
-
 @bot.event
 async def on_command_error(ctx, error):
     print("\n❌ ERROR EN COMANDO:")
     traceback.print_exc()
-
     try:
         await ctx.reply("❌ Ocurrió un error ejecutando este comando.")
     except:
@@ -111,7 +116,6 @@ async def on_command_error(ctx, error):
 async def on_app_command_error(interaction, error):
     print("\n❌ ERROR EN SLASH COMMAND:")
     traceback.print_exc()
-
     try:
         await interaction.response.send_message(
             "❌ Ocurrió un error ejecutando este comando.",
@@ -136,8 +140,4 @@ async def main():
         print("\n❌ ERROR AL INICIAR EL BOT:")
         traceback.print_exc()
 
-# ============================================================
-#   EJECUTAR BOT
-# ============================================================
-
-asyncio.run(main()) 
+asyncio.run(main())
