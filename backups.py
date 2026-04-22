@@ -9,6 +9,7 @@ from cogs.premium import is_premium
 from cogs.cooldowns import can_create_backup, register_backup
 
 BACKUP_FILE = "backups.json"
+COLOR = discord.Color(0x0A3D62)
 
 
 # ============================
@@ -29,18 +30,68 @@ def save_backups(data):
 backups = load_backups()
 
 
+
 # ============================
-# SELECT MENU PARA CREAR BACKUP
+# SELECT DE CONFIRMACIÓN
+# ============================
+
+class ConfirmRestore(discord.ui.View):
+    def __init__(self, nombre, data):
+        super().__init__(timeout=60)
+        self.nombre = nombre
+        self.data = data
+
+        self.add_item(discord.ui.Select(
+            placeholder="¿Estás seguro de restaurar este backup?",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(label="Sí, restaurar", value="si", emoji="🔄"),
+                discord.SelectOption(label="No, cancelar", value="no", emoji="🛑")
+            ]
+        ))
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        choice = interaction.data["values"][0]
+
+        if choice == "no":
+            embed = discord.Embed(
+                title="🛑 Restauración cancelada",
+                description="Has cancelado la restauración del backup.",
+                color=COLOR
+            )
+            embed.set_footer(text="ModdyBot • Acción cancelada")
+            await interaction.response.edit_message(embed=embed, view=None)
+            return False
+
+        # Si elige SÍ → restaurar
+        await interaction.response.edit_message(
+            content="",
+            embed=discord.Embed(
+                title="🔄 Restaurando backup...",
+                description="Por favor espera mientras ModdyBot reconstruye el servidor.",
+                color=COLOR
+            ),
+            view=None
+        )
+
+        await restore_backup(interaction, self.nombre, self.data)
+        return False
+
+
+
+# ============================
+# SELECT PARA CREAR BACKUP
 # ============================
 
 class BackupSelect(discord.ui.Select):
     def __init__(self):
         opciones = [
-            discord.SelectOption(label="Roles", value="roles"),
-            discord.SelectOption(label="Canales", value="canales"),
-            discord.SelectOption(label="Categorías", value="categorias"),
-            discord.SelectOption(label="Emojis", value="emojis"),
-            discord.SelectOption(label="Stickers", value="stickers"),
+            discord.SelectOption(label="Roles", value="roles", emoji="🧱"),
+            discord.SelectOption(label="Canales", value="canales", emoji="📁"),
+            discord.SelectOption(label="Categorías", value="categorias", emoji="🗂"),
+            discord.SelectOption(label="Emojis", value="emojis", emoji="🎨"),
+            discord.SelectOption(label="Stickers", value="stickers", emoji="🖼"),
         ]
 
         super().__init__(
@@ -52,10 +103,17 @@ class BackupSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         self.view.seleccion = self.values
-        await interaction.response.send_message(
-            "✔ Componentes seleccionados. Pulsa **Crear Backup**.",
-            ephemeral=True
+
+        embed = discord.Embed(
+            title="📦 Componentes seleccionados",
+            description="Pulsa **Crear Backup** para continuar.",
+            color=COLOR
         )
+        embed.add_field(name="Seleccionado:", value="\n".join([f"• {v}" for v in self.values]))
+        embed.set_footer(text="ModdyBot • Sistema de Backups")
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 
 class BackupView(discord.ui.View):
@@ -65,7 +123,7 @@ class BackupView(discord.ui.View):
         self.seleccion = []
         self.add_item(BackupSelect())
 
-    @discord.ui.button(label="Crear Backup", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Crear Backup", style=discord.ButtonStyle.green, emoji="📦")
     async def crear(self, interaction: discord.Interaction, button: discord.ui.Button):
 
         if not self.seleccion:
@@ -89,9 +147,7 @@ class BackupView(discord.ui.View):
             "data": {}
         }
 
-        # ----------------------------
-        # GUARDAR ROLES
-        # ----------------------------
+        # ROLES
         if "roles" in self.seleccion:
             roles_data = []
             for r in guild.roles:
@@ -104,9 +160,7 @@ class BackupView(discord.ui.View):
                 })
             data["data"]["roles"] = roles_data
 
-        # ----------------------------
-        # GUARDAR CATEGORÍAS
-        # ----------------------------
+        # CATEGORÍAS
         if "categorias" in self.seleccion:
             categorias = []
             for c in guild.categories:
@@ -116,9 +170,7 @@ class BackupView(discord.ui.View):
                 })
             data["data"]["categorias"] = categorias
 
-        # ----------------------------
-        # GUARDAR CANALES
-        # ----------------------------
+        # CANALES
         if "canales" in self.seleccion:
             canales = []
             for ch in guild.channels:
@@ -148,9 +200,7 @@ class BackupView(discord.ui.View):
 
             data["data"]["canales"] = canales
 
-        # ----------------------------
-        # GUARDAR EMOJIS
-        # ----------------------------
+        # EMOJIS
         if "emojis" in self.seleccion:
             emojis = []
             for e in guild.emojis:
@@ -160,9 +210,7 @@ class BackupView(discord.ui.View):
                 })
             data["data"]["emojis"] = emojis
 
-        # ----------------------------
-        # GUARDAR STICKERS
-        # ----------------------------
+        # STICKERS
         if "stickers" in self.seleccion:
             stickers = []
             for s in guild.stickers:
@@ -174,17 +222,163 @@ class BackupView(discord.ui.View):
                 })
             data["data"]["stickers"] = stickers
 
-        # GUARDAR EN JSON
         backups[self.nombre] = data
         save_backups(backups)
 
-        # Registrar cooldown
         register_backup(interaction.user.id)
 
-        await interaction.response.send_message(
-            f"🎉 Backup **{self.nombre}** creado correctamente.",
-            ephemeral=True
+        embed = discord.Embed(
+            title="🎉 Backup creado con éxito",
+            description=f"El backup **{self.nombre}** ha sido guardado correctamente.",
+            color=COLOR
         )
+        embed.add_field(name="Componentes:", value="\n".join([f"• {v}" for v in self.seleccion]))
+        embed.set_footer(text="ModdyBot • Sistema de Backups")
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+
+# ============================
+# FUNCIÓN DE RESTAURACIÓN
+# ============================
+
+async def restore_backup(interaction, nombre, data):
+
+    guild = interaction.guild
+    no_restaurado = []
+
+    # ============================
+    # BORRAR TODO
+    # ============================
+
+    # BORRAR CANALES
+    for ch in guild.channels:
+        try:
+            await ch.delete()
+        except:
+            pass
+
+    # BORRAR CATEGORÍAS
+    for c in guild.categories:
+        try:
+            await c.delete()
+        except:
+            pass
+
+    # BORRAR ROLES
+    bot_role = guild.me.top_role.position
+    for r in guild.roles:
+        if r.position < bot_role:
+            try:
+                await r.delete()
+            except:
+                pass
+
+    # ============================
+    # RESTAURAR CATEGORÍAS
+    # ============================
+
+    categorias_creadas = {}
+
+    if "categorias" in data["components"]:
+        for c in data["data"]["categorias"]:
+            try:
+                nueva = await guild.create_category(name=c["name"])
+                categorias_creadas[c["name"]] = nueva
+            except:
+                no_restaurado.append(f"Categoría: {c['name']}")
+
+    # ============================
+    # RESTAURAR CANALES
+    # ============================
+
+    if "canales" in data["components"]:
+        for ch in data["data"]["canales"]:
+            try:
+                categoria = categorias_creadas.get(ch["category"], None)
+
+                if ch["type"] == "texto":
+                    await guild.create_text_channel(
+                        name=ch["name"],
+                        topic=ch["topic"],
+                        nsfw=ch["nsfw"],
+                        slowmode_delay=ch["slowmode"],
+                        category=categoria
+                    )
+
+                elif ch["type"] == "voz":
+                    await guild.create_voice_channel(
+                        name=ch["name"],
+                        user_limit=ch["user_limit"],
+                        bitrate=ch["bitrate"],
+                        category=categoria
+                    )
+
+                elif ch["type"] == "foro":
+                    await guild.create_forum_channel(
+                        name=ch["name"],
+                        category=categoria
+                    )
+
+                elif ch["type"] == "stage":
+                    await guild.create_stage_channel(
+                        name=ch["name"],
+                        category=categoria
+                    )
+
+            except:
+                no_restaurado.append(f"Canal: {ch['name']}")
+
+    # ============================
+    # EMOJIS
+    # ============================
+
+    if "emojis" in data["components"]:
+        for e in data["data"]["emojis"]:
+            try:
+                async with interaction.client.session.get(e["url"]) as resp:
+                    img = await resp.read()
+                await guild.create_custom_emoji(name=e["name"], image=img)
+            except:
+                no_restaurado.append(f"Emoji: {e['name']}")
+
+    # ============================
+    # STICKERS
+    # ============================
+
+    if "stickers" in data["components"]:
+        for s in data["data"]["stickers"]:
+            no_restaurado.append(f"Sticker: {s['name']} (no soportado)")
+
+    # ============================
+    # EMBED FINAL
+    # ============================
+
+    reporte = "```\n"
+    reporte += f"Canales: {len(data['data'].get('canales', []))}\n"
+    reporte += f"Categorías: {len(data['data'].get('categorias', []))}\n"
+    reporte += f"Roles: {len(data['data'].get('roles', []))}\n"
+    reporte += f"Emojis: {len(data['data'].get('emojis', []))}\n"
+    reporte += f"Stickers: {len(data['data'].get('stickers', []))}\n\n"
+
+    if no_restaurado:
+        reporte += "No restaurado:\n"
+        for x in no_restaurado:
+            reporte += f"- {x}\n"
+
+    reporte += "```"
+
+    embed = discord.Embed(
+        title="🔄 Backup restaurado",
+        description=f"El backup **{nombre}** ha sido restaurado correctamente.",
+        color=COLOR
+    )
+    embed.add_field(name="Reporte:", value=reporte, inline=False)
+    embed.set_footer(text="ModdyBot • Restauración completada")
+
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
 
 
 # ============================
@@ -202,7 +396,6 @@ class Backups(commands.Cog):
     @app_commands.command(name="backup_crear", description="Crear un backup del servidor.")
     async def backup_crear(self, interaction: discord.Interaction, nombre: str):
 
-        # COOLDOWN
         puede, razon = can_create_backup(interaction.user.id)
         if not puede:
             return await interaction.response.send_message(razon, ephemeral=True)
@@ -213,49 +406,15 @@ class Backups(commands.Cog):
                 ephemeral=True
             )
 
-        view = BackupView(nombre)
-        await interaction.response.send_message(
-            f"🗂 **Creación de Backup — {nombre}**\nSelecciona los componentes:",
-            view=view,
-            ephemeral=True
+        embed = discord.Embed(
+            title="📦 Crear Backup",
+            description="Selecciona los componentes que quieres guardar.",
+            color=COLOR
         )
+        embed.set_footer(text="ModdyBot • Sistema de Backups")
 
-    # ============================
-    # /backup_listar
-    # ============================
-
-    @app_commands.command(name="backup_listar", description="Listar tus backups creados.")
-    async def backup_listar(self, interaction: discord.Interaction):
-
-        texto = ""
-
-        for nombre, data in backups.items():
-            if data["created_by"] == interaction.user.id:
-                fecha = datetime.datetime.utcfromtimestamp(data["created_at"])
-                texto += f"📦 **{nombre}** — `{fecha}` — Servidor: **{data['guild_name']}**\n"
-
-        if texto == "":
-            texto = "No tienes backups creados."
-
-        await interaction.response.send_message(texto, ephemeral=True)
-
-    # ============================
-    # /backup_borrar
-    # ============================
-
-    @app_commands.command(name="backup_borrar", description="Borrar un backup.")
-    async def backup_borrar(self, interaction: discord.Interaction, nombre: str):
-
-        if nombre not in backups:
-            return await interaction.response.send_message("❌ Ese backup no existe.", ephemeral=True)
-
-        if backups[nombre]["created_by"] != interaction.user.id:
-            return await interaction.response.send_message("❌ Ese backup no es tuyo.", ephemeral=True)
-
-        del backups[nombre]
-        save_backups(backups)
-
-        await interaction.response.send_message(f"🗑 Backup **{nombre}** eliminado.", ephemeral=True)
+        view = BackupView(nombre)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     # ============================
     # /backup_restaurar
@@ -269,7 +428,7 @@ class Backups(commands.Cog):
 
         data = backups[nombre]
 
-        # Si NO es premium → solo restaurar en el servidor original
+        # Premium check
         if not is_premium(interaction.user.id):
             if interaction.guild.id != data["guild_id"]:
                 return await interaction.response.send_message(
@@ -277,127 +436,23 @@ class Backups(commands.Cog):
                     ephemeral=True
                 )
 
-        guild = interaction.guild
-
-        no_restaurado = []
-
-        # ============================
-        # RESTAURAR ROLES
-        # ============================
-
-        if "roles" in data["components"]:
-            bot_role = guild.me.top_role.position
-
-            for r in data["data"]["roles"]:
-                if r["position"] >= bot_role:
-                    no_restaurado.append(f"Rol: {r['name']}")
-                    continue
-
-                try:
-                    await guild.create_role(
-                        name=r["name"],
-                        color=discord.Color(r["color"]),
-                        hoist=r["hoist"],
-                        mentionable=r["mentionable"]
-                    )
-                except:
-                    no_restaurado.append(f"Rol: {r['name']}")
-
-        # ============================
-        # RESTAURAR CATEGORÍAS
-        # ============================
-
-        categorias_creadas = {}
-
-        if "categorias" in data["components"]:
-            for c in data["data"]["categorias"]:
-                try:
-                    nueva = await guild.create_category(name=c["name"])
-                    categorias_creadas[c["name"]] = nueva
-                except:
-                    no_restaurado.append(f"Categoría: {c['name']}")
-
-        # ============================
-        # RESTAURAR CANALES
-        # ============================
-
-        if "canales" in data["components"]:
-            for ch in data["data"]["canales"]:
-                try:
-                    categoria = categorias_creadas.get(ch["category"], None)
-
-                    if ch["type"] == "texto":
-                        await guild.create_text_channel(
-                            name=ch["name"],
-                            topic=ch["topic"],
-                            nsfw=ch["nsfw"],
-                            slowmode_delay=ch["slowmode"],
-                            category=categoria
-                        )
-
-                    elif ch["type"] == "voz":
-                        await guild.create_voice_channel(
-                            name=ch["name"],
-                            user_limit=ch["user_limit"],
-                            bitrate=ch["bitrate"],
-                            category=categoria
-                        )
-
-                    elif ch["type"] == "foro":
-                        await guild.create_forum_channel(
-                            name=ch["name"],
-                            category=categoria
-                        )
-
-                    elif ch["type"] == "stage":
-                        await guild.create_stage_channel(
-                            name=ch["name"],
-                            category=categoria
-                        )
-
-                except:
-                    no_restaurado.append(f"Canal: {ch['name']}")
-
-        # ============================
-        # EMOJIS Y STICKERS
-        # ============================
-
-        if "emojis" in data["components"]:
-            for e in data["data"]["emojis"]:
-                try:
-                    async with interaction.client.session.get(e["url"]) as resp:
-                        img = await resp.read()
-                    await guild.create_custom_emoji(name=e["name"], image=img)
-                except:
-                    no_restaurado.append(f"Emoji: {e['name']}")
-
-        if "stickers" in data["components"]:
-            for s in data["data"]["stickers"]:
-                no_restaurado.append(f"Sticker: {s['name']} (no soportado)")
-
-        # ============================
-        # REPORTE FINAL
-        # ============================
-
-        reporte = "```\n"
-        reporte += f"Canales: {len(data['data'].get('canales', []))}\n"
-        reporte += f"Categorías: {len(data['data'].get('categorias', []))}\n"
-        reporte += f"Roles: {len(data['data'].get('roles', []))}\n"
-        reporte += f"Emojis: {len(data['data'].get('emojis', []))}\n"
-        reporte += f"Stickers: {len(data['data'].get('stickers', []))}\n\n"
-
-        if no_restaurado:
-            reporte += "No restaurado:\n"
-            for x in no_restaurado:
-                reporte += f"- {x}\n"
-
-        reporte += "```"
-
-        await interaction.response.send_message(
-            f"🔄 Backup **{nombre}** restaurado.\n{reporte}",
-            ephemeral=True
+        # AVISO IMPORTANTE
+        embed = discord.Embed(
+            title="⚠️ Advertencia de Restauración",
+            description=(
+                "Restaurar este backup **borrará TODOS los canales, categorías y roles actuales** del servidor.\n\n"
+                "Esta acción es **irreversible**.\n\n"
+                "Selecciona una opción para continuar."
+            ),
+            color=COLOR
         )
+        embed.set_footer(text="ModdyBot • Confirmación requerida")
+
+        view = ConfirmRestore(nombre, data)
+
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
 
 async def setup(bot):
-    await bot.add_cog(Backups(bot)) 
+    await bot.add_cog(Backups(bot))
