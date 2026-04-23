@@ -52,19 +52,14 @@ def can_create_backup(user_id: int):
     user_id = str(user_id)
     ahora = int(datetime.datetime.utcnow().timestamp())
 
-    # Si no tiene registros → puede crear
     if user_id not in cooldowns:
         return True, None
 
     data = cooldowns[user_id]
     ultimo = data.get("last_backup", 0)
 
-    # ============================
-    # PREMIUM
-    # ============================
-
+    # PREMIUM → 5 minutos
     if is_premium(int(user_id)):
-        # Cooldown de 5 minutos
         if ahora - ultimo < 300:
             faltan = 300 - (ahora - ultimo)
             minutos = int(faltan / 60) + 1
@@ -74,11 +69,7 @@ def can_create_backup(user_id: int):
             )
         return True, None
 
-    # ============================
-    # FREE
-    # ============================
-
-    # Cooldown de 3 días
+    # FREE → 3 días
     if ahora - ultimo < 259200:
         faltan = 259200 - (ahora - ultimo)
         dias = int(faltan / 86400)
@@ -95,13 +86,7 @@ def register_backup(user_id: int):
     user_id = str(user_id)
     ahora = int(datetime.datetime.utcnow().timestamp())
 
-    if user_id not in cooldowns:
-        cooldowns[user_id] = {
-            "last_backup": ahora
-        }
-    else:
-        cooldowns[user_id]["last_backup"] = ahora
-
+    cooldowns[user_id] = {"last_backup": ahora}
     save_cooldowns(cooldowns)
 
 # ============================
@@ -109,12 +94,7 @@ def register_backup(user_id: int):
 # ============================
 
 async def auto_cleanup(interaction, logs_cog: UltraLogs):
-    """
-    Borra backups antiguos si hay demasiados.
-    Envía log al canal configurado.
-    """
-
-    MAX_BACKUPS = 15  # límite por usuario
+    MAX_BACKUPS = 15
 
     user_id = str(interaction.user.id)
     user_backups = [name for name, data in backups.items() if data["created_by"] == interaction.user.id]
@@ -122,17 +102,13 @@ async def auto_cleanup(interaction, logs_cog: UltraLogs):
     if len(user_backups) <= MAX_BACKUPS:
         return
 
-    # Ordenar por fecha (más antiguos primero)
     user_backups.sort(key=lambda n: backups[n]["created_at"])
-
     eliminar = len(user_backups) - MAX_BACKUPS
 
     for i in range(eliminar):
         nombre = user_backups[i]
         data = backups[nombre]
 
-        # Enviar log
-        guild = interaction.guild
         embed = discord.Embed(
             title="🗑️ Backup eliminado automáticamente",
             description=(
@@ -146,7 +122,7 @@ async def auto_cleanup(interaction, logs_cog: UltraLogs):
         )
 
         try:
-            await logs_cog.send_log(guild, embed, "server_update")
+            await logs_cog.send_log(interaction.guild, embed, "server_update")
         except:
             pass
 
@@ -209,10 +185,6 @@ class BackupView(discord.ui.View):
             return await interaction.response.send_message(razon, ephemeral=True)
 
         guild = interaction.guild
-
-        # ============================
-        # GUARDAR BACKUP
-        # ============================
 
         data = {
             "guild_id": guild.id,
@@ -303,7 +275,6 @@ class BackupView(discord.ui.View):
 
         register_backup(interaction.user.id)
 
-        # AUTO-LIMPIEZA
         logs_cog = interaction.client.get_cog("UltraLogs")
         await auto_cleanup(interaction, logs_cog)
 
@@ -326,7 +297,7 @@ class BackupView(discord.ui.View):
 async def restore_backup(interaction, nombre, data):
 
     guild = interaction.guild
-    canal_log = interaction.channel  # Canal donde se ejecuta el comando
+    canal_log = interaction.channel
     no_restaurado = []
 
     await canal_log.send("🛠️ **Iniciando restauración del backup...**\nEste canal no será borrado.")
@@ -350,7 +321,7 @@ async def restore_backup(interaction, nombre, data):
     # BORRAR CATEGORÍAS
     # ============================
 
-    await canal_log.send("\n🧱 **Eliminando categorías...**")
+    await canal_log.send("\n🗂️ **Eliminando categorías...**")
 
     for c in guild.categories:
         try:
@@ -496,6 +467,25 @@ async def restore_backup(interaction, nombre, data):
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ============================
+# CONFIRMACIÓN DE RESTAURACIÓN
+# ============================
+
+class ConfirmRestore(discord.ui.View):
+    def __init__(self, nombre, data):
+        super().__init__(timeout=60)
+        self.nombre = nombre
+        self.data = data
+
+    @discord.ui.button(label="Confirmar", style=discord.ButtonStyle.red, emoji="⚠️")
+    async def confirmar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await restore_backup(interaction, self.nombre, self.data)
+
+    @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.gray, emoji="❌")
+    async def cancelar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("❌ Restauración cancelada.", ephemeral=True)
+
+# ============================
 # COG PRINCIPAL
 # ============================
 
@@ -515,7 +505,6 @@ class Backups(commands.Cog):
 
         data = backups[nombre]
 
-        # Premium check
         if not is_premium(interaction.user.id):
             if interaction.guild.id != data["guild_id"]:
                 return await interaction.response.send_message(
@@ -625,5 +614,9 @@ class Backups(commands.Cog):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+# ============================
+# SETUP
+# ============================
+
 async def setup(bot):
-    await bot.add_cog(Backups(bot))
+    await bot.add_cog(Backups(bot)) 
