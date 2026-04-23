@@ -288,8 +288,6 @@ class BackupView(discord.ui.View):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
-
 # ============================
 # FUNCIÓN DE RESTAURACIÓN
 # ============================
@@ -478,6 +476,13 @@ class ConfirmRestore(discord.ui.View):
 
     @discord.ui.button(label="Confirmar", style=discord.ButtonStyle.red, emoji="⚠️")
     async def confirmar(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        if interaction.user.id != interaction.guild.owner_id:
+            return await interaction.response.send_message(
+                "❌ Solo el **dueño del servidor** puede restaurar backups.",
+                ephemeral=True
+            )
+
         await interaction.response.defer(ephemeral=True)
         await restore_backup(interaction, self.nombre, self.data)
 
@@ -494,23 +499,59 @@ class Backups(commands.Cog):
         self.bot = bot
 
     # ============================
+    # /backup_crear
+    # ============================
+
+    @app_commands.command(name="backup_crear", description="Crear un backup del servidor.")
+    async def backup_crear(self, interaction: discord.Interaction, nombre: str):
+
+        if interaction.user.id != interaction.guild.owner_id:
+            return await interaction.response.send_message(
+                "❌ Solo el **dueño del servidor** puede crear backups.",
+                ephemeral=True
+            )
+
+        if nombre in backups:
+            return await interaction.response.send_message(
+                "❌ Ya existe un backup con ese nombre.",
+                ephemeral=True
+            )
+
+        puede, razon = can_create_backup(interaction.user.id)
+        if not puede:
+            return await interaction.response.send_message(razon, ephemeral=True)
+
+        embed = discord.Embed(
+            title="📦 Crear Backup",
+            description=(
+                f"Nombre del backup: **{nombre}**\n\n"
+                "Selecciona qué componentes quieres guardar."
+            ),
+            color=COLOR
+        )
+        embed.set_footer(text="ModdyBot • Sistema de Backups")
+
+        view = BackupView(nombre)
+
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    # ============================
     # /backup_restaurar
     # ============================
 
     @app_commands.command(name="backup_restaurar", description="Restaurar un backup.")
     async def backup_restaurar(self, interaction: discord.Interaction, nombre: str):
 
+        if interaction.user.id != interaction.guild.owner_id:
+            return await interaction.response.send_message(
+                "❌ Solo el **dueño del servidor** puede restaurar backups.",
+                ephemeral=True
+            )
+
         if nombre not in backups:
             return await interaction.response.send_message("❌ Ese backup no existe.", ephemeral=True)
 
         data = backups[nombre]
-
-        if not is_premium(interaction.user.id):
-            if interaction.guild.id != data["guild_id"]:
-                return await interaction.response.send_message(
-                    "❌ Solo los usuarios **Premium** pueden restaurar backups en otros servidores.",
-                    ephemeral=True
-                )
 
         embed = discord.Embed(
             title="⚠️ Advertencia de Restauración",
@@ -528,6 +569,30 @@ class Backups(commands.Cog):
         view = ConfirmRestore(nombre, data)
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    # ============================
+    # /backup_borrar
+    # ============================
+
+    @app_commands.command(name="backup_borrar", description="Borra uno de tus backups.")
+    async def backup_borrar(self, interaction: discord.Interaction, nombre: str):
+
+        if interaction.user.id != interaction.guild.owner_id:
+            return await interaction.response.send_message(
+                "❌ Solo el **dueño del servidor** puede borrar backups.",
+                ephemeral=True
+            )
+
+        if nombre not in backups:
+            return await interaction.response.send_message("❌ Ese backup no existe.", ephemeral=True)
+
+        del backups[nombre]
+        save_backups(backups)
+
+        await interaction.response.send_message(
+            f"🗑️ Backup **{nombre}** eliminado correctamente.",
+            ephemeral=True
+        )
 
     # ============================
     # /backup_listar
@@ -559,32 +624,6 @@ class Backups(commands.Cog):
             )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # ============================
-    # /backup_borrar
-    # ============================
-
-    @app_commands.command(name="backup_borrar", description="Borra uno de tus backups.")
-    async def backup_borrar(self, interaction: discord.Interaction, nombre: str):
-
-        if nombre not in backups:
-            return await interaction.response.send_message("❌ Ese backup no existe.", ephemeral=True)
-
-        data = backups[nombre]
-
-        if data["created_by"] != interaction.user.id and not is_premium(interaction.user.id):
-            return await interaction.response.send_message(
-                "❌ Solo el creador o un usuario Premium puede borrar este backup.",
-                ephemeral=True
-            )
-
-        del backups[nombre]
-        save_backups(backups)
-
-        await interaction.response.send_message(
-            f"🗑️ Backup **{nombre}** eliminado correctamente.",
-            ephemeral=True
-        )
 
     # ============================
     # /backup_info
@@ -619,4 +658,4 @@ class Backups(commands.Cog):
 # ============================
 
 async def setup(bot):
-    await bot.add_cog(Backups(bot)) 
+    await bot.add_cog(Backups(bot))
