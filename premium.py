@@ -8,6 +8,7 @@ import datetime
 from cogs.version import OWNER_ID
 
 PREMIUM_FILE = "premium.json"
+COLOR = discord.Color(0x0A3D62)
 
 # ============================
 # CARGAR / GUARDAR JSON
@@ -80,8 +81,76 @@ def is_premium(user_id: int):
 PREMIUM_COMMANDS = [
     # EJEMPLO:
     # "ver_warns",
-    # "verificacion_crear"
+    # "verificacion_crear",
+    # "backup_restaurar",
 ]
+
+# ============================
+# EMBED PREMIUM BONITO
+# ============================
+
+def embed_premium_required():
+    embed = discord.Embed(
+        title="⭐ Acceso Premium Requerido",
+        description=(
+            "Este comando forma parte de las **funciones avanzadas** de ModdyBot.\n\n"
+            "Para utilizarlo necesitas tener **Premium activo**.\n"
+            "Obtén acceso a:\n"
+            "• Backups avanzados\n"
+            "• Restauración completa\n"
+            "• Comandos exclusivos\n"
+            "• Cooldowns reducidos\n"
+            "• Funciones especiales del sistema\n\n"
+            "Si deseas más información, contacta con el propietario del bot."
+        ),
+        color=COLOR
+    )
+    embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/1828/1828884.png")
+    embed.set_footer(text="ModdyBot • Sistema Premium")
+    return embed
+
+def embed_premium_granted(usuario, expira):
+    embed = discord.Embed(
+        title="🎉 ¡Has recibido Premium!",
+        description=(
+            f"Hola {usuario.mention}, ahora formas parte de los **usuarios Premium** de ModdyBot.\n\n"
+            "Disfruta de:\n"
+            "• Backups ilimitados\n"
+            "• Restauración avanzada\n"
+            "• Cooldowns reducidos\n"
+            "• Funciones exclusivas\n"
+            "• Prioridad en el sistema\n\n"
+            f"⏳ **Expira:** {'Nunca (Permanente)' if expira is None else f'<t:{expira}:F>'}"
+        ),
+        color=COLOR
+    )
+    embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/1828/1828884.png")
+    embed.set_footer(text="ModdyBot • Sistema Premium")
+    return embed
+
+def embed_premium_removed(usuario):
+    embed = discord.Embed(
+        title="⚠️ Premium retirado",
+        description=(
+            f"{usuario.mention}, tu acceso **Premium** ha sido retirado.\n\n"
+            "Si crees que esto es un error, contacta con el propietario del bot."
+        ),
+        color=discord.Color.red()
+    )
+    embed.set_footer(text="ModdyBot • Sistema Premium")
+    return embed
+
+def embed_premium_expired(usuario):
+    embed = discord.Embed(
+        title="⏳ Premium expirado",
+        description=(
+            f"{usuario.mention}, tu suscripción **Premium** ha expirado.\n\n"
+            "Puedes renovarla para seguir disfrutando de las funciones avanzadas."
+        ),
+        color=discord.Color.orange()
+    )
+    embed.set_footer(text="ModdyBot • Sistema Premium")
+    return embed
 
 # ============================
 # COG PREMIUM
@@ -93,13 +162,13 @@ class Premium(commands.Cog):
         self.check_expirations.start()
 
     # ============================
-    # INTERCEPTAR TODOS LOS COMANDOS
+    # INTERCEPTAR COMANDOS PREMIUM
     # ============================
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
 
-        if not interaction.type == discord.InteractionType.application_command:
+        if interaction.type != discord.InteractionType.application_command:
             return
 
         comando = interaction.command.name
@@ -107,7 +176,7 @@ class Premium(commands.Cog):
         if comando in PREMIUM_COMMANDS:
             if not is_premium(interaction.user.id):
                 await interaction.response.send_message(
-                    "❌ Este comando es exclusivo para usuarios **Premium**.",
+                    embed=embed_premium_required(),
                     ephemeral=True
                 )
                 return
@@ -132,13 +201,15 @@ class Premium(commands.Cog):
 
             if usuario:
                 try:
-                    await usuario.send("⚠️ Tu **Premium** ha expirado.")
+                    await usuario.send(embed=embed_premium_expired(usuario))
                 except:
                     pass
 
             if owner:
                 try:
-                    await owner.send(f"⚠️ El Premium de **{usuario}** ha expirado.")
+                    await owner.send(
+                        f"⚠️ El Premium de **{usuario}** ha expirado."
+                    )
                 except:
                     pass
 
@@ -146,7 +217,7 @@ class Premium(commands.Cog):
             save_premium(premium_data)
 
     # ============================
-    # /premium añadir
+    # /premium_añadir
     # ============================
 
     @app_commands.command(name="premium_añadir", description="Añadir premium a un usuario.")
@@ -162,20 +233,20 @@ class Premium(commands.Cog):
         premium_data[str(usuario.id)] = {"expira": expira}
         save_premium(premium_data)
 
+        # Enviar embed al usuario
         try:
-            await usuario.send(f"🎉 ¡Has recibido **Premium**!\n⏳ Expira: {('Nunca' if expira is None else datetime.datetime.utcfromtimestamp(expira))}")
+            await usuario.send(embed=embed_premium_granted(usuario, expira))
         except:
             pass
 
-        try:
-            await interaction.user.send(f"✔ Premium añadido a {usuario}.")
-        except:
-            pass
-
-        await interaction.response.send_message(f"✔ Premium añadido a **{usuario}**.", ephemeral=True)
+        # Enviar confirmación al owner
+        await interaction.response.send_message(
+            f"✔ Premium añadido a **{usuario}**.",
+            ephemeral=True
+        )
 
     # ============================
-    # /premium quitar
+    # /premium_quitar
     # ============================
 
     @app_commands.command(name="premium_quitar", description="Quitar premium a un usuario.")
@@ -189,16 +260,19 @@ class Premium(commands.Cog):
             save_premium(premium_data)
 
             try:
-                await usuario.send("⚠️ Tu Premium ha sido retirado.")
+                await usuario.send(embed=embed_premium_removed(usuario))
             except:
                 pass
 
-            await interaction.response.send_message(f"✔ Premium retirado a **{usuario}**.", ephemeral=True)
+            await interaction.response.send_message(
+                f"✔ Premium retirado a **{usuario}**.",
+                ephemeral=True
+            )
         else:
             await interaction.response.send_message("❌ Ese usuario no tiene premium.", ephemeral=True)
 
     # ============================
-    # /premium listar
+    # /premium_listar
     # ============================
 
     @app_commands.command(name="premium_listar", description="Lista todos los usuarios premium.")
@@ -210,17 +284,22 @@ class Premium(commands.Cog):
         if not premium_data:
             return await interaction.response.send_message("No hay usuarios premium.", ephemeral=True)
 
-        texto = "**Usuarios Premium:**\n\n"
+        embed = discord.Embed(
+            title="⭐ Usuarios Premium",
+            color=COLOR
+        )
 
         for user_id, info in premium_data.items():
             expira = info["expira"]
             usuario = self.bot.get_user(int(user_id))
 
-            texto += f"👤 **{usuario}** — ID: `{user_id}`\n"
-            texto += f"⏳ Expira: {'Nunca (Permanente)' if expira is None else datetime.datetime.utcfromtimestamp(expira)}\n\n"
+            embed.add_field(
+                name=f"👤 {usuario}",
+                value=f"🆔 `{user_id}`\n⏳ Expira: {'Nunca (Permanente)' if expira is None else f'<t:{expira}:F>'}",
+                inline=False
+            )
 
-        await interaction.response.send_message(texto, ephemeral=True)
-
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Premium(bot))
