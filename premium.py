@@ -161,30 +161,33 @@ class Premium(commands.Cog):
         self.check_expirations.start()
 
     # ============================
-    # INTERCEPTAR COMANDOS PREMIUM
+    # BLOQUEAR COMANDOS PREMIUM ANTES DE EJECUTARSE
     # ============================
 
-    @commands.Cog.listener()
-    async def on_interaction(self, interaction: discord.Interaction):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
 
-        # Solo comandos slash
+        # Solo slash commands
         if interaction.type != discord.InteractionType.application_command:
-            return
+            return True
 
         comando = interaction.command.name
 
-        if comando in PREMIUM_COMMANDS:
-            if not is_premium(interaction.user.id):
+        # Si NO es premium → permitir
+        if comando not in PREMIUM_COMMANDS:
+            return True
 
-                # EVITAR RESPONDER DOS VECES
-                if interaction.response.is_done():
-                    return
+        # Si es premium → permitir
+        if is_premium(interaction.user.id):
+            return True
 
-                await interaction.response.send_message(
-                    embed=embed_premium_required(),
-                    ephemeral=True
-                )
-                return
+        # Si NO es premium → bloquear
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                embed=embed_premium_required(),
+                ephemeral=True
+            )
+
+        return False  # BLOQUEA EL COMANDO
 
     # ============================
     # TAREA AUTOMÁTICA EXPIRACIONES
