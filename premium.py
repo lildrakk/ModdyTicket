@@ -79,14 +79,13 @@ def is_premium(user_id: int):
 # ============================
 
 PREMIUM_COMMANDS = [
-    # EJEMPLO:
-    # "ver_warns",
-    # "verificacion_crear",
+    "botinfo",
+    # "verificacion",
     # "backup_restaurar",
 ]
 
 # ============================
-# EMBED PREMIUM BONITO
+# EMBEDS PREMIUM
 # ============================
 
 def embed_premium_required():
@@ -113,7 +112,7 @@ def embed_premium_granted(usuario, expira):
     embed = discord.Embed(
         title="🎉 ¡Has recibido Premium!",
         description=(
-            f"Hola {usuario.mention}, ahora formas parte de los **usuarios Premium** de ModdyBot.\n\n"
+            f"{usuario.mention}, ahora formas parte de los **usuarios Premium**.\n\n"
             "Disfruta de:\n"
             "• Backups ilimitados\n"
             "• Restauración avanzada\n"
@@ -168,6 +167,7 @@ class Premium(commands.Cog):
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
 
+        # Solo comandos slash
         if interaction.type != discord.InteractionType.application_command:
             return
 
@@ -175,6 +175,11 @@ class Premium(commands.Cog):
 
         if comando in PREMIUM_COMMANDS:
             if not is_premium(interaction.user.id):
+
+                # EVITAR RESPONDER DOS VECES
+                if interaction.response.is_done():
+                    return
+
                 await interaction.response.send_message(
                     embed=embed_premium_required(),
                     ephemeral=True
@@ -207,9 +212,7 @@ class Premium(commands.Cog):
 
             if owner:
                 try:
-                    await owner.send(
-                        f"⚠️ El Premium de **{usuario}** ha expirado."
-                    )
+                    await owner.send(f"⚠️ El Premium de **{usuario}** ha expirado.")
                 except:
                     pass
 
@@ -233,13 +236,11 @@ class Premium(commands.Cog):
         premium_data[str(usuario.id)] = {"expira": expira}
         save_premium(premium_data)
 
-        # Enviar embed al usuario
         try:
             await usuario.send(embed=embed_premium_granted(usuario, expira))
         except:
             pass
 
-        # Enviar confirmación al owner
         await interaction.response.send_message(
             f"✔ Premium añadido a **{usuario}**.",
             ephemeral=True
@@ -302,4 +303,4 @@ class Premium(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):
-    await bot.add_cog(Premium(bot))
+    await bot.add_cog(Premium(bot)) 
