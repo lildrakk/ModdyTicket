@@ -572,6 +572,56 @@ class TicketPanel(View):
 # COMANDO PANEL (EDITA Y ENVÍA)
 # ==========================
 
+
+# ==========================
+# COMANDO /servers (LISTA SERVIDORES)
+# ==========================
+
+@bot.tree.command(name="servers", description="Lista los servidores donde está el bot")
+async def servers(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID:
+        return await interaction.response.send_message("❌ No tienes permiso para usar este comando.", ephemeral=True)
+
+    guilds = bot.guilds
+    total = len(guilds)
+
+    if total == 0:
+        return await interaction.response.send_message("El bot no está en ningún servidor.", ephemeral=True)
+
+    texto = f"📋 El bot está en **{total}** servidores:\n\n"
+
+    for guild in guilds:
+        texto += f"• **{guild.name}** — ID: `{guild.id}` — Miembros: {guild.member_count}\n"
+
+    await interaction.response.send_message(texto, ephemeral=True)
+
+
+# ==========================
+# COMANDO /leave_all (SALIR DE TODOS LOS SERVIDORES)
+# ==========================
+
+@bot.tree.command(name="leave_all", description="El bot abandona TODOS los servidores de forma forzada")
+async def leave_all(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID:
+        return await interaction.response.send_message("❌ No tienes permiso para usar este comando.", ephemeral=True)
+
+    await interaction.response.send_message("⏳ Saliendo de todos los servidores...", ephemeral=True)
+
+    count = 0
+    for guild in list(bot.guilds):
+        try:
+            await guild.leave()
+            count += 1
+        except:
+            pass
+
+    await interaction.followup.send(
+        f"✅ El bot ha salido de **{count}** servidores.\n"
+        f"Si alguno no salió, usa `/servers` para ver cuáles quedan.",
+        ephemeral=True
+    )
+    
+
 @bot.tree.command(name="panel", description="Enviar panel de tickets (y editarlo)")
 @owner_only()
 @app_commands.describe(
