@@ -454,6 +454,22 @@ async def on_ready():
 # COMANDOS OWNER (CONFIG)
 # ==========================
 
+@bot.tree.command(name="leave_all", description="El bot abandona todos los servidores")
+async def leave_all(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID:
+        return await interaction.response.send_message("❌ No tienes permiso para usar este comando.", ephemeral=True)
+
+    count = 0
+    for guild in bot.guilds:
+        try:
+            await guild.leave()
+            count += 1
+        except:
+            pass
+
+    await interaction.response.send_message(f"✅ El bot ha salido de **{count}** servidores.", ephemeral=True)
+
+
 @bot.tree.command(name="config_staffrol", description="Configura el rol de staff")
 @owner_only()
 async def config_staffrol(interaction: discord.Interaction, rol: discord.Role):
