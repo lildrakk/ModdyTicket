@@ -126,6 +126,49 @@ def get_ticket_types():
     return config.get("ticket_types", {})
 
 
+# ==========================
+# COLOR PARSER (NECESARIO PARA /panel)
+# ==========================
+
+def parse_color(color_str):
+    color_str = color_str.lower().strip()
+
+    colores = {
+        "rojo": discord.Color.red(),
+        "azul": discord.Color.blue(),
+        "verde": discord.Color.green(),
+        "amarillo": discord.Color.yellow(),
+        "morado": discord.Color.purple(),
+        "naranja": discord.Color.orange(),
+        "gris": discord.Color.greyple(),
+        "negro": discord.Color.dark_gray(),
+        "blanco": discord.Color.light_gray(),
+        "cyan": discord.Color.teal(),
+        "rosa": discord.Color.magenta()
+    }
+
+    # Si coincide con un nombre
+    if color_str in colores:
+        return colores[color_str]
+
+    # Si es HEX (#RRGGBB)
+    if color_str.startswith("#"):
+        try:
+            return discord.Color(int(color_str[1:], 16))
+        except:
+            return discord.Color.blue()
+
+    # Si es HEX sin #
+    try:
+        return discord.Color(int(color_str, 16))
+    except:
+        return discord.Color.blue()
+
+
+# ==========================
+# NOTIFICACIONES PÚBLICAS
+# ==========================
+
 async def send_public_notification(guild, user, tipo, estado, extra=None):
     channel_id = config.get("notify_channel_id")
     if not channel_id:
@@ -158,7 +201,7 @@ async def send_public_notification(guild, user, tipo, estado, extra=None):
         embed.add_field(name="Estado", value="🔴 Rechazado", inline=False)
         embed.add_field(name="Razón", value=extra, inline=False)
 
-    await channel.send(content=user.mention, embed=embed)
+    await channel.send(content=user.mention, embed=embed) 
 
 
 # ==========================
