@@ -442,27 +442,30 @@ async def ticket_fields_tipo_autocomplete(interaction: discord.Interaction, curr
 # PANEL (OWNER ONLY)
 # ==========================
 
-@bot.tree.command(name="panel", description="Envía el panel de tickets")
+@bot.tree.command(name="panel", description="Envía un panel de tickets editable")
 @owner_only()
 @app_commands.describe(
-    canal="Canal donde se enviará el panel"
+    canal="Canal donde se enviará el panel",
+    titulo="Título del panel",
+    descripcion="Descripción del panel",
+    color="Color del embed (nombre o HEX)"
 )
-async def panel(interaction: discord.Interaction, canal: discord.TextChannel):
-    if not config["ticket_types"]:
-        return await interaction.response.send_message("No hay tipos de ticket configurados.", ephemeral=True)
+async def panel(interaction: discord.Interaction, canal: discord.TextChannel, titulo: str, descripcion: str, color: str):
+    config["panel"]["title"] = titulo
+    config["panel"]["description"] = descripcion
+    config["panel"]["color"] = color
+    save_config()
 
     embed = discord.Embed(
-        title="Centro de Tickets",
-        description="Selecciona un tipo de ticket para abrir uno.",
-        color=discord.Color.blue()
+        title=titulo,
+        description=descripcion,
+        color=parse_color(color)
     )
 
     view = PanelView()
-
     await canal.send(embed=embed, view=view)
-    await interaction.response.send_message("Panel enviado.", ephemeral=True)
 
-
+    await interaction.response.send_message("Panel enviado y guardado.", ephemeral=True) 
 # ==========================
 # PANEL CLEAR (OWNER ONLY)
 # ==========================
@@ -508,7 +511,7 @@ class PanelView(View):
                 )
             )
 
-        self.add_item(TicketSelect(options))
+        self.add_item(TicketSelect(options)) 
 
 
 class TicketSelect(discord.ui.Select):
@@ -523,6 +526,11 @@ class TicketSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         tipo = self.values[0]
         data = config["ticket_types"][tipo]
+
+        # Reparar fields corruptos automáticamente
+        if isinstance(data.get("fields"), list):
+            data["fields"] = {}
+            save_config()
 
         modal = TicketModal(tipo, data, interaction.user)
         await interaction.response.send_modal(modal)
