@@ -19,7 +19,6 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-
 # ==========================
 # CONFIG
 # ==========================
@@ -28,7 +27,7 @@ def load_config():
     if not os.path.exists(CONFIG_PATH):
         default = {
             "notify_channel_id": None,
-            "solicitudes_channel_id": None,  # canal donde llegan las solicitudes
+            "solicitudes_channel_id": None,
             "staff_roles": [],
             "panel": {
                 "title": "Centro de Tickets",
@@ -47,16 +46,13 @@ def load_config():
                 }
             }
         }
-
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(default, f, indent=4, ensure_ascii=False)
-
         return default
 
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
-    # AUTOFIX: panel
     if "panel" not in cfg:
         cfg["panel"] = {
             "title": "Centro de Tickets",
@@ -64,15 +60,12 @@ def load_config():
             "color": "blue"
         }
 
-    # AUTOFIX: canal de solicitudes
     if "solicitudes_channel_id" not in cfg:
         cfg["solicitudes_channel_id"] = None
 
-    # AUTOFIX: notify_channel_id por si no existiera
     if "notify_channel_id" not in cfg:
         cfg["notify_channel_id"] = None
 
-    # AUTOFIX: fields corruptos
     for tipo, info in cfg.get("ticket_types", {}).items():
         if isinstance(info.get("fields"), list):
             info["fields"] = {}
@@ -88,25 +81,7 @@ def save_config():
         json.dump(config, f, indent=4, ensure_ascii=False)
 
 
-# ==========================
-# CARGAR CONFIG + AUTOFIX EXTRA
-# ==========================
-
 config = load_config()
-
-if "panel" not in config:
-    config["panel"] = {
-        "title": "Centro de Tickets",
-        "description": "Selecciona un tipo de ticket",
-        "color": "blue"
-    }
-    save_config()
-
-for tipo, info in config.get("ticket_types", {}).items():
-    if isinstance(info.get("fields"), list):
-        info["fields"] = {}
-        save_config()
-
 
 # ==========================
 # HELPERS
@@ -119,8 +94,7 @@ def owner_only():
 
 
 def is_staff(member: discord.Member):
-    staff_roles = config.get("staff_roles", [])
-    return any(r.id in staff_roles for r in member.roles)
+    return any(r.id in config.get("staff_roles", []) for r in member.roles)
 
 
 def get_ticket_types():
@@ -129,7 +103,6 @@ def get_ticket_types():
 
 def parse_color(color_str: str) -> discord.Color:
     color_str = color_str.lower().strip()
-
     colores = {
         "rojo": discord.Color.red(),
         "azul": discord.Color.blue(),
@@ -143,19 +116,16 @@ def parse_color(color_str: str) -> discord.Color:
         "cyan": discord.Color.teal(),
         "rosa": discord.Color.magenta()
     }
-
     if color_str in colores:
         return colores[color_str]
-
     if color_str.startswith("#"):
         try:
             return discord.Color(int(color_str[1:], 16))
-        except Exception:
+        except:
             return discord.Color.blue()
-
     try:
         return discord.Color(int(color_str, 16))
-    except Exception:
+    except:
         return discord.Color.blue()
 
 
@@ -163,7 +133,6 @@ async def send_public_notification(guild, user, tipo, estado, extra=None):
     channel_id = config.get("notify_channel_id")
     if not channel_id:
         return
-
     channel = guild.get_channel(channel_id)
     if not channel:
         return
@@ -180,57 +149,49 @@ async def send_public_notification(guild, user, tipo, estado, extra=None):
 
     if estado == "pendiente":
         embed.add_field(name="Estado", value="🟡 Pendiente", inline=False)
-
     elif estado == "revision":
         embed.add_field(name="Estado", value="🟠 En revisión", inline=False)
         if extra:
             embed.add_field(name="Staff", value=extra, inline=False)
-
     elif estado == "aceptado":
         embed.add_field(name="Estado", value="🟢 Aceptado", inline=False)
         if extra:
             embed.add_field(name="Motivo", value=extra, inline=False)
-
     elif estado == "rechazado":
         embed.add_field(name="Estado", value="🔴 Rechazado", inline=False)
         if extra:
             embed.add_field(name="Razón", value=extra, inline=False)
 
-    await channel.send(content=user.mention, embed=embed) 
-
-
+    await channel.send(content=user.mention, embed=embed)
 
 # ==========================
-# SISTEMA DE SOLICITUDES (NUEVO)
+# SISTEMA DE SOLICITUDES
 # ==========================
 
 class StaffRequestView(View):
-    def __init__(self, user_id: int, tipo: str, tipo_data: dict, respuestas: dict):
+    def __init__(self, user_id, tipo, tipo_data, respuestas):
         super().__init__(timeout=None)
         self.user_id = user_id
         self.tipo = tipo
         self.tipo_data = tipo_data
         self.respuestas = respuestas
 
-    @discord.ui.button(label="Aceptar", style=discord.ButtonStyle.success)
-    async def aceptar(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="Aceptar", emoji="✅", style=discord.ButtonStyle.success)
+    async def aceptar(self, interaction, button):
         if not is_staff(interaction.user):
             return await interaction.response.send_message("No eres staff.", ephemeral=True)
-
-        modal = AcceptRequestModal(
-            self.user_id, self.tipo, self.tipo_data, self.respuestas, interaction.message
+        await interaction.response.send_modal(
+            AcceptRequestModal(self.user_id, self.tipo, self.tipo_data, self.respuestas, interaction.message)
         )
-        await interaction.response.send_modal(modal)
 
-    @discord.ui.button(label="Rechazar", style=discord.ButtonStyle.danger)
-    async def rechazar(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="Rechazar", emoji="❌", style=discord.ButtonStyle.danger)
+    async def rechazar(self, interaction, button):
         if not is_staff(interaction.user):
             return await interaction.response.send_message("No eres staff.", ephemeral=True)
+        await interaction.response.send_modal(
+            RejectRequestModal(self.user_id, self.tipo, self.tipo_data, self.respuestas, interaction.message)
+                ) 
 
-        modal = RejectRequestModal(
-            self.user_id, self.tipo, self.tipo_data, self.respuestas, interaction.message
-        )
-        await interaction.response.send_modal(modal)
 
 
 # ==========================
@@ -268,15 +229,27 @@ class AcceptRequestModal(Modal):
 
         ticket_channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
 
-        # Embed dentro del ticket
+        # Ping al staff dentro del ticket
+        staff_roles = config.get("staff_roles", [])
+        staff_ping = ""
+        if staff_roles:
+            menciones = []
+            for rid in staff_roles:
+                role = guild.get_role(rid)
+                if role:
+                    menciones.append(role.mention)
+            if menciones:
+                staff_ping = " ".join(menciones)
+
+        # Embed inicial del ticket
         embed = discord.Embed(
-            title=f"Ticket de {self.tipo_data['label']}",
-            description="El staff te atenderá lo antes posible.",
+            title=f"Has abierto un ticket de {self.tipo_data['label']}",
+            description="Espera pacientemente, el staff te atenderá lo antes posible.",
             color=discord.Color.green()
         )
 
         await ticket_channel.send(
-            content=f"{user.mention}",
+            content=f"{user.mention} {staff_ping}",
             embed=embed,
             view=TicketView(user.id, self.tipo, self.tipo_data)
         )
@@ -286,7 +259,7 @@ class AcceptRequestModal(Modal):
             guild, user, self.tipo_data["label"], "aceptado", extra=self.motivo.value
         )
 
-        # Notificación al usuario por DM
+        # DM al usuario
         try:
             await user.send(
                 embed=discord.Embed(
@@ -306,7 +279,8 @@ class AcceptRequestModal(Modal):
 
         await self.solicitud_message.edit(embed=embed, view=None)
 
-        await interaction.response.send_message("Solicitud aceptada.", ephemeral=True)
+        # FIX ERROR 10062
+        await interaction.followup.send("Solicitud aceptada.", ephemeral=True)
 
 
 # ==========================
@@ -334,7 +308,7 @@ class RejectRequestModal(Modal):
             guild, user, self.tipo_data["label"], "rechazado", extra=self.motivo.value
         )
 
-        # Notificación al usuario por DM
+        # DM al usuario
         try:
             await user.send(
                 embed=discord.Embed(
@@ -354,13 +328,13 @@ class RejectRequestModal(Modal):
 
         await self.solicitud_message.edit(embed=embed, view=None)
 
-        await interaction.response.send_message("Solicitud rechazada.", ephemeral=True)
-
+        # FIX ERROR 10062
+        await interaction.followup.send("Solicitud rechazada.", ephemeral=True)
 
 
 
 # ==========================
-# MODAL DEL USUARIO (ENVÍA SOLICITUD, NO TICKET)
+# MODAL DEL USUARIO (ENVÍA SOLICITUD)
 # ==========================
 
 class TicketModal(Modal):
@@ -395,7 +369,7 @@ class TicketModal(Modal):
                 ephemeral=True
             )
 
-        # Embed de solicitud para STAFF
+        # Embed de solicitud
         embed = discord.Embed(
             title=f"📩 Nueva solicitud: {tipo_data['label']}",
             color=discord.Color.yellow()
@@ -421,8 +395,8 @@ class TicketModal(Modal):
         )
 
         # Ping al staff
-        staff_ping = ""
         staff_roles = config.get("staff_roles", [])
+        staff_ping = ""
         if staff_roles:
             menciones = []
             for rid in staff_roles:
@@ -434,7 +408,7 @@ class TicketModal(Modal):
 
         await solicitudes_channel.send(content=staff_ping or None, embed=embed, view=view)
 
-        # Notificación pública de solicitud pendiente
+        # Notificación pública
         await send_public_notification(guild, self.user, tipo_data["label"], "pendiente")
 
         await interaction.response.send_message(
@@ -454,25 +428,36 @@ class TicketView(View):
         self.tipo = tipo
         self.tipo_data = tipo_data
 
-    @discord.ui.button(label="Reclamar", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Reclamar", emoji="🛠️", style=discord.ButtonStyle.primary)
     async def reclamar(self, interaction: discord.Interaction, button: Button):
         if not is_staff(interaction.user):
             return await interaction.response.send_message("No eres staff.", ephemeral=True)
 
-        await interaction.response.send_message(
-            f"Ticket reclamado por {interaction.user.mention}.",
-            ephemeral=False
+        creador = interaction.guild.get_member(self.user_id)
+        reclamador = interaction.user
+
+        # Ping fuera del embed
+        content = f"{creador.mention} {reclamador.mention}"
+
+        # Embed profesional
+        embed = discord.Embed(
+            title="🎫 Ticket reclamado",
+            description=f"Este ticket ha sido reclamado por {reclamador.mention}",
+            color=discord.Color.orange()
         )
 
+        await interaction.response.send_message(content=content, embed=embed)
+
+        # Notificación pública
         await send_public_notification(
             interaction.guild,
-            interaction.guild.get_member(self.user_id),
+            creador,
             self.tipo_data["label"],
             "revision",
-            extra=interaction.user.mention
+            extra=reclamador.mention
         )
 
-    @discord.ui.button(label="Cerrar ticket", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Cerrar ticket", emoji="🔒", style=discord.ButtonStyle.danger)
     async def cerrar(self, interaction: discord.Interaction, button: Button):
         if not is_staff(interaction.user):
             return await interaction.response.send_message("No eres staff.", ephemeral=True)
@@ -553,11 +538,7 @@ async def panel(interaction: discord.Interaction):
         color=parse_color(panel_cfg["color"])
     )
 
-    await interaction.response.send_message(
-        "Panel enviado.",
-        ephemeral=True
-    )
-
+    await interaction.response.send_message("Panel enviado.", ephemeral=True)
     await interaction.channel.send(embed=embed, view=TicketPanel())
 
 
@@ -587,7 +568,6 @@ async def config_staff(interaction: discord.Interaction, rol: discord.Role):
     if rol.id not in config["staff_roles"]:
         config["staff_roles"].append(rol.id)
         save_config()
-
     await interaction.response.send_message(f"Rol {rol.mention} añadido como staff.", ephemeral=True)
 
 
