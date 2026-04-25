@@ -77,7 +77,34 @@ def load_config():
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=4, ensure_ascii=False)
 
-    return cfg 
+    return cfg
+
+
+def save_config():
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=4, ensure_ascii=False)
+
+
+# ==========================
+# CARGAR CONFIG + AUTOFIX
+# ==========================
+
+config = load_config()
+
+# Reparar clave panel si no existe
+if "panel" not in config:
+    config["panel"] = {
+        "title": "Centro de Tickets",
+        "description": "Selecciona un tipo de ticket",
+        "color": "blue"
+    }
+    save_config()
+
+# Reparar fields corruptos
+for tipo, info in config.get("ticket_types", {}).items():
+    if isinstance(info.get("fields"), list):
+        info["fields"] = {}
+        save_config()
 
 
 # ==========================
