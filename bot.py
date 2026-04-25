@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -33,18 +34,24 @@ def load_config():
             "panel_description": "Selecciona una opción del menú para enviar una solicitud.",
             "panel_color": 0x2f3136,
             "ticket_types": {
-                # Ejemplos iniciales (puedes borrarlos con /ticket_remove)
                 "reporte": {
                     "label": "Reporte",
                     "description": "Reportar a un usuario",
                     "emoji": "⚠️",
-                    "fields": ["id_reportado", "motivo", "pruebas"]
+                    "fields": {
+                        "id_reportado": "ID del usuario reportado",
+                        "motivo": "Motivo del reporte",
+                        "pruebas": "Pruebas"
+                    }
                 },
                 "soporte": {
                     "label": "Soporte",
                     "description": "Ayuda general",
                     "emoji": "🛠️",
-                    "fields": ["motivo", "detalles"]
+                    "fields": {
+                        "motivo": "Motivo",
+                        "detalles": "Detalles adicionales"
+                    }
                 }
             }
         }
@@ -68,11 +75,10 @@ config = load_config()
 # HELPERS
 # ==========================
 
-def is_owner(user: discord.abc.User | discord.Member) -> bool:
+def is_owner(user):
     return user.id == OWNER_ID
 
-
-def is_staff(member: discord.Member) -> bool:
+def is_staff(member):
     role_id = config.get("staff_role_id")
     if not role_id:
         return False
@@ -95,7 +101,6 @@ COLOR_MAP = {
     "turquesa": 0x1ABC9C,
 }
 
-
 def parse_color(text: str) -> int:
     text = text.lower().strip()
     if text in COLOR_MAP:
@@ -103,12 +108,12 @@ def parse_color(text: str) -> int:
     t = text.replace("#", "").strip()
     try:
         return int(t, 16)
-    except ValueError:
+    except:
         return config.get("panel_color", 0x2f3136)
 
 
 def owner_only():
-    async def predicate(interaction: discord.Interaction) -> bool:
+    async def predicate(interaction):
         return is_owner(interaction.user)
     return app_commands.check(predicate)
 
@@ -118,242 +123,172 @@ def owner_only():
 # ==========================
 
 class TicketModal(Modal):
-    def __init__(self, ticket_type_key: str, ticket_type_data: dict, user: discord.Member):
+    def __init__(self, ticket_type_key, ticket_type_data, user):
         self.ticket_type_key = ticket_type_key
         self.ticket_type_data = ticket_type_data
         self.creator = user
 
-        title = f"Solicitud: {ticket_type_data['label']}"
-        super().__init__(title=title, timeout=None)
+        super().__init__(title=f"Solicitud: {ticket_type_data['label']}", timeout=None)
 
         self.inputs = {}
-        for field in ticket_type_data.get("fields", []):
-            if field == "id_reportado":
-                ti = TextInput(
-                    label="ID del usuario reportado",
-                    placeholder="Ejemplo: 123456789012345678",
-                    required=True,
-                    max_length=32
-                )
-            elif field == "motivo":
-                ti = TextInput(
-                    label="Motivo",
-                    style=discord.TextStyle.paragraph,
-                    placeholder="Explica el motivo de tu solicitud.",
-                    required=True,
-                    max_length=1024
-                )
-            elif field == "pruebas":
-                ti = TextInput(
-                    label="Pruebas (links, descripción, etc.)",
-                    style=discord.TextStyle.paragraph,
-                    required=False,
-                    max_length=1024
-                )
-            elif field == "detalles":
-                ti = TextInput(
-                    label="Detalles adicionales",
-                    style=discord.TextStyle.paragraph,
-                    required=False,
-                    max_length=1024
-                )
-            elif field == "id_moderador":
-                ti = TextInput(
-                    label="ID del moderador que te sancionó",
-                    required=True,
-                    max_length=32
-                )
-            else:
-                ti = TextInput(
-                    label=field.replace("_", " ").title(),
-                    style=discord.TextStyle.paragraph,
-                    required=False,
-                    max_length=1024
-                )
+        fields = ticket_type_data.get("fields", {})
 
-            self.inputs[field] = ti
+        for field_key, visible_name in fields.items():
+            label = visible_name or field_key.replace("_", " ").title()
+
+            if field_key == "id_reportado":
+                ti = TextInput(label=label, placeholder="Ej: 123456789012345678", required=True, max_length=32)
+            elif field_key == "motivo":
+                ti = TextInput(label=label, style=discord.TextStyle.paragraph, required=True, max_length=1024)
+            else:
+                ti = TextInput(label=label, style=discord.TextStyle.paragraph, required=False, max_length=1024)
+
+            self.inputs[field_key] = ti
             self.add_item(ti)
 
-    async def on_submit(self, interaction: discord.Interaction):
-        staff_channel_id = config.get("staff_channel_id")
-        if not staff_channel_id:
-            return await interaction.response.send_message(
-                "❌ No hay canal de staff configurado. Contacta con la administración.",
-                ephemeral=True
-            )
+    async def on_submit(self, interaction):
+        staff_channel = interaction.guild.get_channel(config["staff_channel_id"])
+        if not staff_channel:
+            return await interaction.response.send_message("❌ No hay canal de staff configurado.", ephemeral=True)
 
-        guild = interaction.guild
-        staff_channel = guild.get_channel(staff_channel_id)
-        if not isinstance(staff_channel, discord.TextChannel):
-            return await interaction.response.send_message(
-                "❌ El canal de staff configurado ya no existe.",
-                ephemeral=True
-            )
-
-        # Recoger respuestas
-        answers = {}
-        for key, ti in self.inputs.items():
-            answers[key] = str(ti.value).strip()
-
-        ticket_type_key = self.ticket_type_key
-        ticket_type_data = self.ticket_type_data
-
-        # ID tipo-usuario
+        answers = {k: v.value for k, v in self.inputs.items()}
         safe_name = self.creator.name.replace(" ", "_")
-        ticket_id = f"{ticket_type_key}-{safe_name}"
+        ticket_id = f"{self.ticket_type_key}-{safe_name}"
 
-        # Embed para staff
         embed = discord.Embed(
-            title=f"📨 Nueva solicitud: {ticket_type_data['label']}",
+            title=f"📨 Nueva solicitud: {self.ticket_type_data['label']}",
             description=f"ID del ticket: `{ticket_id}`",
             color=discord.Color.blurple()
         )
-        embed.add_field(name="👤 Usuario", value=f"{self.creator.mention} (`{self.creator.id}`)", inline=False)
-        embed.add_field(name="📂 Tipo", value=ticket_type_data["label"], inline=True)
+        embed.add_field(name="👤 Usuario", value=f"{self.creator.mention}", inline=False)
 
-        if answers:
-            formatted = []
-            for k, v in answers.items():
-                if not v:
-                    continue
-                pretty = k.replace("_", " ").title()
-                formatted.append(f"**{pretty}:** {v}")
-            if formatted:
-                embed.add_field(name="📋 Detalles de la solicitud", value="\n".join(formatted), inline=False)
+        formatted = []
+        for k, v in answers.items():
+            if v:
+                formatted.append(f"**{k.replace('_',' ').title()}:** {v}")
 
-        embed.add_field(name="📌 Estado", value="🟡 Pendiente de revisión", inline=False)
+        if formatted:
+            embed.add_field(name="📋 Detalles", value="\n".join(formatted), inline=False)
 
-        view = StaffTicketView(
-            ticket_id=ticket_id,
-            creator_id=self.creator.id,
-            ticket_type_key=ticket_type_key,
-            ticket_type_label=ticket_type_data["label"],
-            answers=answers
-        )
+        embed.add_field(name="📌 Estado", value="🟡 Pendiente", inline=False)
 
-        staff_role_id = config.get("staff_role_id")
-        content = None
-        if staff_role_id:
-            role = guild.get_role(staff_role_id)
-            if role:
-                content = role.mention
+        view = StaffTicketView(ticket_id, self.creator.id, self.ticket_type_key, self.ticket_type_data["label"], answers)
 
-        await staff_channel.send(content=content, embed=embed, view=view)
-        await interaction.response.send_message(
-            "✅ Tu solicitud ha sido enviada. El staff la revisará en breve.",
-            ephemeral=True
-        )
+        await staff_channel.send(embed=embed, view=view)
+        await interaction.response.send_message("✅ Solicitud enviada.", ephemeral=True)
 
 
-class VerdictModal(Modal):
-    def __init__(self, *, accepted: bool, message: discord.Message, ticket_data: dict):
+class ResolutionModal(Modal):
+    def __init__(self, accepted, message, ticket_data):
         self.accepted = accepted
         self.message = message
         self.ticket_data = ticket_data
 
-        title = "Veredicto: Aceptar" if accepted else "Veredicto: Rechazar"
-        super().__init__(title=title, timeout=None)
+        super().__init__(title="Resolución: Aceptar" if accepted else "Resolución: Rechazar")
 
-        label = "Motivo del veredicto" if accepted else "Razón del rechazo"
-        self.reason_input = TextInput(
-            label=label,
+        self.reason = TextInput(
+            label="Motivo de la resolución",
             style=discord.TextStyle.paragraph,
-            required=True,
-            max_length=1024
+            required=True
         )
-        self.add_item(self.reason_input)
+        self.add_item(self.reason)
 
-    async def on_submit(self, interaction: discord.Interaction):
-        notify_channel_id = config.get("notify_channel_id")
-        guild = interaction.guild
-
-        reason = str(self.reason_input.value).strip()
-        ticket_id = self.ticket_data["ticket_id"]
-        creator_id = self.ticket_data["creator_id"]
-        ticket_type_label = self.ticket_data["ticket_type_label"]
-        answers = self.ticket_data["answers"]
-
-        # Editar embed del mensaje de staff
-        original = self.message
-        if not original:
-            return await interaction.response.send_message(
-                "❌ No se pudo encontrar el mensaje original del ticket.",
-                ephemeral=True
-            )
-
-        embed = original.embeds[0] if original.embeds else discord.Embed(color=discord.Color.blurple())
-        # Actualizar estado
-        estado_texto = "🟢 Aceptado" if self.accepted else "🔴 Rechazado"
-        # Reemplazar o añadir campo de estado
-        new_fields = []
-        for field in embed.fields:
-            if field.name == "📌 Estado":
-                new_fields.append(discord.EmbedField(name="📌 Estado", value=estado_texto, inline=False))
-            else:
-                new_fields.append(field)
+    async def on_submit(self, interaction):
+        embed = self.message.embeds[0]
+        old_fields = embed.fields
         embed.clear_fields()
-        for f in new_fields:
-            embed.add_field(name=f.name, value=f.value, inline=f.inline)
 
-        # Añadir veredicto
-        embed.add_field(
-            name="💬 Veredicto del staff",
-            value=reason,
-            inline=False
-        )
-        embed.set_footer(text=f"Revisado por {interaction.user} ({interaction.user.id})")
+        estado = "🟢 Aceptado" if self.accepted else "🔴 Rechazado"
 
-        # Desactivar botones
-        disabled_view = View(timeout=None)
-        disabled_view.add_item(Button(label="Aceptar", style=discord.ButtonStyle.success, disabled=True))
-        disabled_view.add_item(Button(label="Rechazar", style=discord.ButtonStyle.danger, disabled=True))
+        for f in old_fields:
+            if f.name == "📌 Estado":
+                embed.add_field(name="📌 Estado", value=estado, inline=False)
+            else:
+                embed.add_field(name=f.name, value=f.value, inline=f.inline)
 
-        await original.edit(embed=embed, view=disabled_view)
+        embed.add_field(name="💬 Resolución del staff", value=self.reason.value, inline=False)
 
-        # Notificación al usuario
-        notify_channel = guild.get_channel(notify_channel_id) if notify_channel_id else None
-        creator = guild.get_member(creator_id)
+        # Desactivar botones de aceptar/rechazar
+        view = StaffTicketView(**self.ticket_data)
+        for item in view.children:
+            if isinstance(item, Button) and item.label in ("Aceptar", "Rechazar"):
+                item.disabled = True
 
-        if notify_channel and isinstance(notify_channel, discord.TextChannel) and creator:
-            notif_embed = discord.Embed(
-                title=f"Resultado de tu solicitud: {ticket_type_label}",
+        await self.message.edit(embed=embed, view=view)
+
+        # Notificación limpia
+        notify = interaction.guild.get_channel(config["notify_channel_id"])
+        creator = interaction.guild.get_member(self.ticket_data["creator_id"])
+
+        if notify and creator:
+            notif = discord.Embed(
+                title=f"Resultado de tu solicitud: {self.ticket_data['ticket_type_label']}",
                 color=discord.Color.green() if self.accepted else discord.Color.red()
             )
-            notif_embed.add_field(name="ID del ticket", value=f"`{ticket_id}`", inline=False)
-            notif_embed.add_field(
-                name="Estado",
-                value="🟢 Aceptado" if self.accepted else "🔴 Rechazado",
-                inline=False
-            )
-            notif_embed.add_field(
-                name="Moderador",
-                value=f"{interaction.user.mention} (`{interaction.user.id}`)",
-                inline=False
-            )
+            notif.add_field(name="Estado", value=estado, inline=False)
+            notif.add_field(name="Motivo de la resolución", value=self.reason.value, inline=False)
 
-            if answers:
-                formatted = []
-                for k, v in answers.items():
-                    if not v:
-                        continue
-                    pretty = k.replace("_", " ").title()
-                    formatted.append(f"**{pretty}:** {v}")
-                if formatted:
-                    notif_embed.add_field(
-                        name="Tus respuestas",
-                        value="\n".join(formatted),
-                        inline=False
-                    )
+            await notify.send(content=creator.mention, embed=notif)
 
-            notif_embed.add_field(
-                name="Motivo del veredicto",
-                value=reason,
-                inline=False
-            )
+        await interaction.response.send_message("Resolución registrada.", ephemeral=True)
 
-            await notify_channel.send(content=creator.mention, embed=notif_embed)
 
-        await interaction.response.send_message("✅ Veredicto registrado.", ephemeral=True)
+class CloseTicketModal(Modal):
+    def __init__(self, message, ticket_data):
+        self.message = message
+        self.ticket_data = ticket_data
+
+        super().__init__(title="Cerrar ticket")
+
+        self.reason = TextInput(
+            label="Razón del cierre",
+            style=discord.TextStyle.paragraph,
+            required=True
+        )
+        self.add_item(self.reason)
+
+    async def on_submit(self, interaction):
+        creator = interaction.guild.get_member(self.ticket_data["creator_id"])
+        claimer = interaction.guild.get_member(self.ticket_data.get("claimer_id"))
+
+        # DM al creador
+        if creator:
+            try:
+                dm = discord.Embed(
+                    title="Tu ticket ha sido cerrado",
+                    description=f"Razón: {self.reason.value}",
+                    color=discord.Color.red()
+                )
+                await creator.send(embed=dm)
+            except:
+                pass
+
+        # Mensaje en canal
+        mentions = f"{creator.mention if creator else ''} {claimer.mention if claimer else interaction.user.mention}"
+
+        embed = discord.Embed(
+            title="🎫 Ticket cerrado",
+            description=f"Este ticket ha sido cerrado por {interaction.user.mention}.\nSe eliminará en **5 segundos**.",
+            color=discord.Color.red()
+        )
+        embed.add_field(name="Razón", value=self.reason.value, inline=False)
+
+        await interaction.channel.send(content=mentions, embed=embed)
+
+        # Desactivar botones
+        closed = View()
+        for label in ("Aceptar", "Rechazar", "Reclamar", "Cerrar ticket"):
+            closed.add_item(Button(label=label, disabled=True))
+
+        await self.message.edit(view=closed)
+
+        await interaction.response.send_message("Ticket cerrado.", ephemeral=True)
+
+        await asyncio.sleep(5)
+        try:
+            await self.message.delete()
+        except:
+            pass
 
 
 # ==========================
@@ -361,268 +296,230 @@ class VerdictModal(Modal):
 # ==========================
 
 class StaffTicketView(View):
-    def __init__(self, ticket_id: str, creator_id: int, ticket_type_key: str, ticket_type_label: str, answers: dict):
+    def __init__(self, ticket_id, creator_id, ticket_type_key, ticket_type_label, answers):
         super().__init__(timeout=None)
         self.ticket_data = {
             "ticket_id": ticket_id,
             "creator_id": creator_id,
             "ticket_type_key": ticket_type_key,
             "ticket_type_label": ticket_type_label,
-            "answers": answers
+            "answers": answers,
+            "claimer_id": None
         }
 
     @discord.ui.button(label="Aceptar", style=discord.ButtonStyle.success)
-    async def aceptar(self, interaction: discord.Interaction, button: Button):
-        if not isinstance(interaction.user, discord.Member) or not is_staff(interaction.user):
-            return await interaction.response.send_message(
-                "❌ Solo el staff puede usar este botón.",
-                ephemeral=True
-            )
+    async def aceptar(self, interaction, button):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Solo staff.", ephemeral=True)
 
-        modal = VerdictModal(accepted=True, message=interaction.message, ticket_data=self.ticket_data)
+        modal = ResolutionModal(True, interaction.message, self.ticket_data)
         await interaction.response.send_modal(modal)
 
     @discord.ui.button(label="Rechazar", style=discord.ButtonStyle.danger)
-    async def rechazar(self, interaction: discord.Interaction, button: Button):
-        if not isinstance(interaction.user, discord.Member) or not is_staff(interaction.user):
-            return await interaction.response.send_message(
-                "❌ Solo el staff puede usar este botón.",
-                ephemeral=True
-            )
+    async def rechazar(self, interaction, button):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Solo staff.", ephemeral=True)
 
-        modal = VerdictModal(accepted=False, message=interaction.message, ticket_data=self.ticket_data)
+        modal = ResolutionModal(False, interaction.message, self.ticket_data)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="Reclamar", style=discord.ButtonStyle.primary)
+    async def reclamar(self, interaction, button):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Solo staff.", ephemeral=True)
+
+        if self.ticket_data["claimer_id"]:
+            return await interaction.response.send_message("Ya reclamado.", ephemeral=True)
+
+        self.ticket_data["claimer_id"] = interaction.user.id
+        button.disabled = True
+        button.label = f"Reclamado por {interaction.user.display_name}"
+
+        await interaction.message.edit(view=self)
+
+        creator = interaction.guild.get_member(self.ticket_data["creator_id"])
+        mentions = f"{creator.mention if creator else ''} {interaction.user.mention}"
+
+        embed = discord.Embed(
+            title="🎫 Ticket reclamado",
+            description=f"Este ticket ha sido reclamado por {interaction.user.mention}",
+            color=discord.Color.blue()
+        )
+
+        await interaction.channel.send(content=mentions, embed=embed)
+        await interaction.response.send_message("Reclamado.", ephemeral=True)
+
+    @discord.ui.button(label="Cerrar ticket", style=discord.ButtonStyle.secondary)
+    async def cerrar(self, interaction, button):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Solo staff.", ephemeral=True)
+
+        modal = CloseTicketModal(interaction.message, self.ticket_data)
         await interaction.response.send_modal(modal)
 
 
 class TicketSelect(Select):
     def __init__(self):
         options = []
-        for key, data in config.get("ticket_types", {}).items():
-            label = data.get("label", key)
-            description = data.get("description", "Sin descripción")
-            emoji = data.get("emoji")
+        for key, data in config["ticket_types"].items():
             options.append(discord.SelectOption(
-                label=label,
-                description=description[:100],
-                emoji=emoji,
+                label=data["label"],
+                description=data["description"],
+                emoji=data["emoji"],
                 value=key
             ))
 
-        placeholder = "Selecciona el tipo de solicitud"
-        super().__init__(placeholder=placeholder, min_values=1, max_values=1, options=options)
+        super().__init__(placeholder="Selecciona una opción", options=options)
 
-    async def callback(self, interaction: discord.Interaction):
-        if not isinstance(interaction.user, discord.Member):
-            return await interaction.response.send_message(
-                "❌ Solo miembros del servidor pueden usar esto.",
-                ephemeral=True
-            )
-
-        ticket_type_key = self.values[0]
-        ticket_type_data = config["ticket_types"].get(ticket_type_key)
-        if not ticket_type_data:
-            return await interaction.response.send_message(
-                "❌ Este tipo de ticket ya no está disponible.",
-                ephemeral=True
-            )
-
-        modal = TicketModal(ticket_type_key, ticket_type_data, interaction.user)
+    async def callback(self, interaction):
+        modal = TicketModal(self.values[0], config["ticket_types"][self.values[0]], interaction.user)
         await interaction.response.send_modal(modal)
 
 
 class PanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
-        if config.get("ticket_types"):
-            self.add_item(TicketSelect())
+        self.add_item(TicketSelect())
 
-
-# ==========================
-# EVENTOS
-# ==========================
 
 @bot.event
 async def on_ready():
-    try:
-        await bot.tree.sync()
-    except Exception:
-        pass
-    print(f"Bot listo como {bot.user} ({bot.user.id})")
+    await bot.tree.sync()
+    print("Bot listo") 
+
 
 
 # ==========================
 # COMANDOS OWNER (CONFIG)
 # ==========================
 
-@bot.tree.command(name="leave_all", description="El bot abandona todos los servidores")
-async def leave_all(interaction: discord.Interaction):
-    if interaction.user.id != OWNER_ID:
-        return await interaction.response.send_message("❌ No tienes permiso para usar este comando.", ephemeral=True)
-
-    count = 0
-    for guild in bot.guilds:
-        try:
-            await guild.leave()
-            count += 1
-        except:
-            pass
-
-    await interaction.response.send_message(f"✅ El bot ha salido de **{count}** servidores.", ephemeral=True)
-
-
 @bot.tree.command(name="config_staffrol", description="Configura el rol de staff")
 @owner_only()
-async def config_staffrol(interaction: discord.Interaction, rol: discord.Role):
+async def config_staffrol(interaction, rol: discord.Role):
     config["staff_role_id"] = rol.id
     save_config()
-    await interaction.response.send_message(f"✅ Rol de staff configurado: {rol.mention}", ephemeral=True)
+    await interaction.response.send_message("Rol de staff configurado.", ephemeral=True)
 
 
 @bot.tree.command(name="config_staffcanal", description="Configura el canal donde llegan las solicitudes")
 @owner_only()
-async def config_staffcanal(interaction: discord.Interaction, canal: discord.TextChannel):
+async def config_staffcanal(interaction, canal: discord.TextChannel):
     config["staff_channel_id"] = canal.id
     save_config()
-    await interaction.response.send_message(f"✅ Canal de staff configurado: {canal.mention}", ephemeral=True)
+    await interaction.response.send_message("Canal de staff configurado.", ephemeral=True)
 
 
-@bot.tree.command(name="config_notificaciones", description="Configura el canal de notificaciones para los usuarios")
+@bot.tree.command(name="config_notificaciones", description="Configura el canal de notificaciones")
 @owner_only()
-async def config_notificaciones(interaction: discord.Interaction, canal: discord.TextChannel):
+async def config_notificaciones(interaction, canal: discord.TextChannel):
     config["notify_channel_id"] = canal.id
     save_config()
-    await interaction.response.send_message(f"✅ Canal de notificaciones configurado: {canal.mention}", ephemeral=True)
+    await interaction.response.send_message("Canal de notificaciones configurado.", ephemeral=True)
 
 
 # ==========================
-# COMANDOS OWNER (TICKET TYPES)
+# TICKET TYPES
 # ==========================
 
-@bot.tree.command(name="ticket_add", description="Añade un tipo de ticket al select")
+@bot.tree.command(name="ticket_add", description="Añade un tipo de ticket")
 @owner_only()
-@app_commands.describe(
-    tipo="ID interno del tipo (ej: reporte, soporte)",
-    nombre="Nombre visible en el select",
-    descripcion="Descripción que se verá en el select",
-    emoji="Emoji opcional (ej: ⚠️, 🛠️)"
-)
-async def ticket_add(
-    interaction: discord.Interaction,
-    tipo: str,
-    nombre: str,
-    descripcion: str,
-    emoji: str | None = None
-):
-    tipo = tipo.lower().strip()
-    if "ticket_types" not in config:
-        config["ticket_types"] = {}
-
+async def ticket_add(interaction, tipo: str, nombre: str, descripcion: str, emoji: str = None):
+    tipo = tipo.lower()
     config["ticket_types"][tipo] = {
         "label": nombre,
         "description": descripcion,
         "emoji": emoji,
-        "fields": ["motivo"]  # por defecto, luego lo puedes cambiar con /ticket_fields
+        "fields": {}
     }
     save_config()
-    await interaction.response.send_message(
-        f"✅ Tipo de ticket añadido: `{tipo}` → **{nombre}**",
-        ephemeral=True
-    )
+    await interaction.response.send_message("Tipo añadido.", ephemeral=True)
 
 
-@bot.tree.command(name="ticket_remove", description="Elimina un tipo de ticket del select")
+@bot.tree.command(name="ticket_remove", description="Elimina un tipo de ticket")
 @owner_only()
-@app_commands.describe(
-    tipo="ID interno del tipo (ej: reporte, soporte)"
-)
-async def ticket_remove(interaction: discord.Interaction, tipo: str):
-    tipo = tipo.lower().strip()
-    if tipo not in config.get("ticket_types", {}):
-        return await interaction.response.send_message(
-            "❌ Ese tipo de ticket no existe.",
-            ephemeral=True
-        )
+async def ticket_remove(interaction, tipo: str):
+    tipo = tipo.lower()
+    if tipo not in config["ticket_types"]:
+        return await interaction.response.send_message("No existe.", ephemeral=True)
 
     del config["ticket_types"][tipo]
     save_config()
-    await interaction.response.send_message(
-        f"✅ Tipo de ticket eliminado: `{tipo}`",
-        ephemeral=True
-    )
+    await interaction.response.send_message("Tipo eliminado.", ephemeral=True)
 
 
-@bot.tree.command(name="ticket_fields", description="Configura los campos del modal para un tipo de ticket")
-@owner_only()
-@app_commands.describe(
-    tipo="ID interno del tipo (ej: reporte, soporte)",
-    campos="Lista separada por comas. Ej: id_reportado, motivo, pruebas"
+@bot.tree.command(
+    name="ticket_fields",
+    description="Gestiona un field del modal (ejecuta este comando una vez por cada acción)"
 )
-async def ticket_fields(interaction: discord.Interaction, tipo: str, campos: str):
-    tipo = tipo.lower().strip()
-    if tipo not in config.get("ticket_types", {}):
-        return await interaction.response.send_message(
-            "❌ Ese tipo de ticket no existe.",
-            ephemeral=True
-        )
+@owner_only()
+async def ticket_fields(interaction, tipo: str, accion: str, field: str, nombre: str = None):
+    tipo = tipo.lower()
+    accion = accion.lower()
+    field = field.lower()
 
-    raw = [c.strip().lower() for c in campos.split(",") if c.strip()]
-    if not raw:
-        return await interaction.response.send_message(
-            "❌ Debes indicar al menos un campo.",
-            ephemeral=True
-        )
+    if tipo not in config["ticket_types"]:
+        return await interaction.response.send_message("Tipo no existe.", ephemeral=True)
 
-    config["ticket_types"][tipo]["fields"] = raw
-    save_config()
-    await interaction.response.send_message(
-        f"✅ Campos actualizados para `{tipo}`:\n`{', '.join(raw)}`",
-        ephemeral=True
-    )
+    fields = config["ticket_types"][tipo]["fields"]
+
+    if accion in ("añadir", "anadir", "editar"):
+        if not nombre:
+            return await interaction.response.send_message("Falta nombre.", ephemeral=True)
+        fields[field] = nombre
+        save_config()
+        return await interaction.response.send_message("Field actualizado.", ephemeral=True)
+
+    if accion == "eliminar":
+        if field not in fields:
+            return await interaction.response.send_message("Field no existe.", ephemeral=True)
+        del fields[field]
+        save_config()
+        return await interaction.response.send_message("Field eliminado.", ephemeral=True)
+
+    await interaction.response.send_message("Acción inválida.", ephemeral=True)
 
 
 # ==========================
-# COMANDO OWNER PANEL
+# PANEL
 # ==========================
 
-@bot.tree.command(name="panel", description="Envía el panel de solicitudes con el select actualizado")
+@bot.tree.command(name="panel", description="Envía el panel de tickets")
 @owner_only()
-@app_commands.describe(
-    canal="Canal donde se enviará el panel",
-    titulo="Título del panel",
-    descripcion="Descripción del panel",
-    color="Color (nombre o HEX). Ej: azul oscuro, #3498db"
-)
-async def panel(
-    interaction: discord.Interaction,
-    canal: discord.TextChannel,
-    titulo: str,
-    descripcion: str,
-    color: str
-):
+async def panel(interaction, canal: discord.TextChannel, titulo: str, descripcion: str, color: str):
     config["panel_title"] = titulo
     config["panel_description"] = descripcion
     config["panel_color"] = parse_color(color)
     save_config()
 
     embed = discord.Embed(
-        title=config["panel_title"],
-        description=config["panel_description"],
+        title=titulo,
+        description=descripcion,
         color=config["panel_color"]
     )
-    embed.set_footer(text="Selecciona una opción del menú para enviar tu solicitud.")
 
-    view = PanelView()
-    if not config.get("ticket_types"):
-        return await interaction.response.send_message(
-            "❌ No hay tipos de ticket configurados. Usa `/ticket_add` primero.",
-            ephemeral=True
-        )
+    await canal.send(embed=embed, view=PanelView())
+    await interaction.response.send_message("Panel enviado.", ephemeral=True)
 
-    await canal.send(embed=embed, view=view)
-    await interaction.response.send_message(
-        f"✅ Panel enviado a {canal.mention}",
-        ephemeral=True
-    )
+
+# ==========================
+# LEAVE ALL
+# ==========================
+
+@bot.tree.command(name="leave_all", description="El bot abandona todos los servidores")
+async def leave_all(interaction):
+    if interaction.user.id != OWNER_ID:
+        return await interaction.response.send_message("No autorizado.", ephemeral=True)
+
+    count = 0
+    for g in bot.guilds:
+        try:
+            await g.leave()
+            count += 1
+        except:
+            pass
+
+    await interaction.response.send_message(f"Salí de {count} servidores.", ephemeral=True) 
+
 
 
 # ==========================
