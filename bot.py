@@ -28,6 +28,7 @@ def load_config():
     if not os.path.exists(CONFIG_PATH):
         default = {
             "notify_channel_id": None,
+            "solicitudes_channel_id": None,  # canal donde llegan las solicitudes
             "staff_roles": [],
             "panel": {
                 "title": "Centro de Tickets",
@@ -52,13 +53,10 @@ def load_config():
 
         return default
 
-    # Si el archivo existe, cargarlo
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
-    # ==========================
-    # AUTOFIX: Reparar panel si no existe
-    # ==========================
+    # AUTOFIX: panel
     if "panel" not in cfg:
         cfg["panel"] = {
             "title": "Centro de Tickets",
@@ -66,14 +64,19 @@ def load_config():
             "color": "blue"
         }
 
-    # ==========================
-    # AUTOFIX: Reparar fields corruptos
-    # ==========================
+    # AUTOFIX: canal de solicitudes
+    if "solicitudes_channel_id" not in cfg:
+        cfg["solicitudes_channel_id"] = None
+
+    # AUTOFIX: notify_channel_id por si no existiera
+    if "notify_channel_id" not in cfg:
+        cfg["notify_channel_id"] = None
+
+    # AUTOFIX: fields corruptos
     for tipo, info in cfg.get("ticket_types", {}).items():
         if isinstance(info.get("fields"), list):
             info["fields"] = {}
 
-    # Guardar reparaciones si hubo cambios
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=4, ensure_ascii=False)
 
@@ -86,12 +89,11 @@ def save_config():
 
 
 # ==========================
-# CARGAR CONFIG + AUTOFIX
+# CARGAR CONFIG + AUTOFIX EXTRA
 # ==========================
 
 config = load_config()
 
-# Reparar clave panel si no existe
 if "panel" not in config:
     config["panel"] = {
         "title": "Centro de Tickets",
@@ -100,7 +102,6 @@ if "panel" not in config:
     }
     save_config()
 
-# Reparar fields corruptos
 for tipo, info in config.get("ticket_types", {}).items():
     if isinstance(info.get("fields"), list):
         info["fields"] = {}
@@ -126,11 +127,7 @@ def get_ticket_types():
     return config.get("ticket_types", {})
 
 
-# ==========================
-# COLOR PARSER (NECESARIO PARA /panel)
-# ==========================
-
-def parse_color(color_str):
+def parse_color(color_str: str) -> discord.Color:
     color_str = color_str.lower().strip()
 
     colores = {
@@ -147,27 +144,20 @@ def parse_color(color_str):
         "rosa": discord.Color.magenta()
     }
 
-    # Si coincide con un nombre
     if color_str in colores:
         return colores[color_str]
 
-    # Si es HEX (#RRGGBB)
     if color_str.startswith("#"):
         try:
             return discord.Color(int(color_str[1:], 16))
-        except:
+        except Exception:
             return discord.Color.blue()
 
-    # Si es HEX sin #
     try:
         return discord.Color(int(color_str, 16))
-    except:
+    except Exception:
         return discord.Color.blue()
 
-
-# ==========================
-# NOTIFICACIONES PÚBLICAS
-# ==========================
 
 async def send_public_notification(guild, user, tipo, estado, extra=None):
     channel_id = config.get("notify_channel_id")
@@ -180,10 +170,12 @@ async def send_public_notification(guild, user, tipo, estado, extra=None):
 
     embed = discord.Embed(
         title=f"Ticket de {tipo}",
-        color=discord.Color.yellow() if estado == "pendiente" else
-              discord.Color.orange() if estado == "revision" else
-              discord.Color.green() if estado == "aceptado" else
-              discord.Color.red()
+        color=(
+            discord.Color.yellow() if estado == "pendiente" else
+            discord.Color.orange() if estado == "revision" else
+            discord.Color.green() if estado == "aceptado" else
+            discord.Color.red()
+        )
     )
 
     if estado == "pendiente":
@@ -191,21 +183,184 @@ async def send_public_notification(guild, user, tipo, estado, extra=None):
 
     elif estado == "revision":
         embed.add_field(name="Estado", value="🟠 En revisión", inline=False)
-        embed.add_field(name="Staff", value=extra, inline=False)
+        if extra:
+            embed.add_field(name="Staff", value=extra, inline=False)
 
     elif estado == "aceptado":
         embed.add_field(name="Estado", value="🟢 Aceptado", inline=False)
-        embed.add_field(name="Motivo", value=extra, inline=False)
+        if extra:
+            embed.add_field(name="Motivo", value=extra, inline=False)
 
     elif estado == "rechazado":
         embed.add_field(name="Estado", value="🔴 Rechazado", inline=False)
-        embed.add_field(name="Razón", value=extra, inline=False)
+        if extra:
+            embed.add_field(name="Razón", value=extra, inline=False)
 
     await channel.send(content=user.mention, embed=embed) 
 
 
+
 # ==========================
-# MODAL PARA CAMPOS DEL TICKET
+# SISTEMA DE SOLICITUDES (NUEVO)
+# ==========================
+
+class StaffRequestView(View):
+    def __init__(self, user_id: int, tipo: str, tipo_data: dict, respuestas: dict):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.tipo = tipo
+        self.tipo_data = tipo_data
+        self.respuestas = respuestas
+
+    @discord.ui.button(label="Aceptar", style=discord.ButtonStyle.success)
+    async def aceptar(self, interaction: discord.Interaction, button: Button):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("No eres staff.", ephemeral=True)
+
+        modal = AcceptRequestModal(
+            self.user_id, self.tipo, self.tipo_data, self.respuestas, interaction.message
+        )
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="Rechazar", style=discord.ButtonStyle.danger)
+    async def rechazar(self, interaction: discord.Interaction, button: Button):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("No eres staff.", ephemeral=True)
+
+        modal = RejectRequestModal(
+            self.user_id, self.tipo, self.tipo_data, self.respuestas, interaction.message
+        )
+        await interaction.response.send_modal(modal)
+
+
+# ==========================
+# MODAL ACEPTAR SOLICITUD
+# ==========================
+
+class AcceptRequestModal(Modal):
+    def __init__(self, user_id, tipo, tipo_data, respuestas, solicitud_message):
+        super().__init__(title="Aceptar solicitud")
+        self.user_id = user_id
+        self.tipo = tipo
+        self.tipo_data = tipo_data
+        self.respuestas = respuestas
+        self.solicitud_message = solicitud_message
+
+        self.motivo = TextInput(label="Motivo de la aceptación", style=discord.TextStyle.paragraph)
+        self.add_item(self.motivo)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        user = guild.get_member(self.user_id)
+
+        # Crear canal del ticket
+        channel_name = f"{self.tipo}-{user.name}".replace(" ", "-")
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)
+        }
+
+        for role_id in config.get("staff_roles", []):
+            role = guild.get_role(role_id)
+            if role:
+                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
+        ticket_channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
+
+        # Embed dentro del ticket
+        embed = discord.Embed(
+            title=f"Ticket de {self.tipo_data['label']}",
+            description="El staff te atenderá lo antes posible.",
+            color=discord.Color.green()
+        )
+
+        await ticket_channel.send(
+            content=f"{user.mention}",
+            embed=embed,
+            view=TicketView(user.id, self.tipo, self.tipo_data)
+        )
+
+        # Notificación pública
+        await send_public_notification(
+            guild, user, self.tipo_data["label"], "aceptado", extra=self.motivo.value
+        )
+
+        # Notificación al usuario por DM
+        try:
+            await user.send(
+                embed=discord.Embed(
+                    title=f"Tu solicitud de {self.tipo_data['label']} fue aceptada",
+                    description=f"Motivo: {self.motivo.value}",
+                    color=discord.Color.green()
+                )
+            )
+        except:
+            pass
+
+        # Editar solicitud original
+        embed = self.solicitud_message.embeds[0]
+        embed.set_field_at(3, name="📍 Estado", value="🟢 Aceptado", inline=False)
+        embed.add_field(name="Revisado por", value=interaction.user.mention, inline=False)
+        embed.add_field(name="Motivo", value=self.motivo.value, inline=False)
+
+        await self.solicitud_message.edit(embed=embed, view=None)
+
+        await interaction.response.send_message("Solicitud aceptada.", ephemeral=True)
+
+
+# ==========================
+# MODAL RECHAZAR SOLICITUD
+# ==========================
+
+class RejectRequestModal(Modal):
+    def __init__(self, user_id, tipo, tipo_data, respuestas, solicitud_message):
+        super().__init__(title="Rechazar solicitud")
+        self.user_id = user_id
+        self.tipo = tipo
+        self.tipo_data = tipo_data
+        self.respuestas = respuestas
+        self.solicitud_message = solicitud_message
+
+        self.motivo = TextInput(label="Motivo del rechazo", style=discord.TextStyle.paragraph)
+        self.add_item(self.motivo)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        user = guild.get_member(self.user_id)
+
+        # Notificación pública
+        await send_public_notification(
+            guild, user, self.tipo_data["label"], "rechazado", extra=self.motivo.value
+        )
+
+        # Notificación al usuario por DM
+        try:
+            await user.send(
+                embed=discord.Embed(
+                    title=f"Tu solicitud de {self.tipo_data['label']} fue rechazada",
+                    description=f"Motivo: {self.motivo.value}",
+                    color=discord.Color.red()
+                )
+            )
+        except:
+            pass
+
+        # Editar solicitud original
+        embed = self.solicitud_message.embeds[0]
+        embed.set_field_at(3, name="📍 Estado", value="🔴 Rechazado", inline=False)
+        embed.add_field(name="Revisado por", value=interaction.user.mention, inline=False)
+        embed.add_field(name="Motivo", value=self.motivo.value, inline=False)
+
+        await self.solicitud_message.edit(embed=embed, view=None)
+
+        await interaction.response.send_message("Solicitud rechazada.", ephemeral=True)
+
+
+
+
+# ==========================
+# MODAL DEL USUARIO (ENVÍA SOLICITUD, NO TICKET)
 # ==========================
 
 class TicketModal(Modal):
@@ -224,49 +379,72 @@ class TicketModal(Modal):
     async def on_submit(self, interaction: discord.Interaction):
         guild = interaction.guild
         tipo_data = self.data
-        emoji = tipo_data["emoji"]
         tipo = self.tipo
 
-        # Crear canal
-        channel_name = f"{emoji} {tipo}-{self.user.name}".replace(" ", "-")
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            self.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)
-        }
+        solicitudes_channel_id = config.get("solicitudes_channel_id")
+        if not solicitudes_channel_id:
+            return await interaction.response.send_message(
+                "No hay canal de solicitudes configurado. Usa `/config_solicitudes`.",
+                ephemeral=True
+            )
 
-        for role_id in config.get("staff_roles", []):
-            role = guild.get_role(role_id)
-            if role:
-                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+        solicitudes_channel = guild.get_channel(solicitudes_channel_id)
+        if not solicitudes_channel:
+            return await interaction.response.send_message(
+                "El canal de solicitudes configurado ya no existe.",
+                ephemeral=True
+            )
 
-        channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
-
-        # Embed inicial
+        # Embed de solicitud para STAFF
         embed = discord.Embed(
-            title=f"Ticket de {tipo_data['label']}",
-            description="Has abierto un ticket. El staff te atenderá lo antes posible.",
-            color=discord.Color.blue()
+            title=f"📩 Nueva solicitud: {tipo_data['label']}",
+            color=discord.Color.yellow()
+        )
+        embed.add_field(name="👤 Usuario", value=f"{self.user.mention} ({self.user.id})", inline=False)
+        embed.add_field(name="📂 Tipo", value=tipo_data["label"], inline=False)
+
+        detalles = []
+        for key, label in tipo_data["fields"].items():
+            valor = self.inputs[key].value if key in self.inputs else "Sin respuesta"
+            detalles.append(f"**{label}:** {valor}")
+
+        if detalles:
+            embed.add_field(name="📝 Detalles", value="\n".join(detalles), inline=False)
+
+        embed.add_field(name="📍 Estado", value="🟡 Pendiente", inline=False)
+
+        view = StaffRequestView(
+            user_id=self.user.id,
+            tipo=tipo,
+            tipo_data=tipo_data,
+            respuestas={k: self.inputs[k].value for k in self.inputs}
         )
 
-        staff_mentions = " ".join(
-            role.mention for role in (guild.get_role(r) for r in config["staff_roles"]) if role
-        )
+        # Ping al staff
+        staff_ping = ""
+        staff_roles = config.get("staff_roles", [])
+        if staff_roles:
+            menciones = []
+            for rid in staff_roles:
+                role = guild.get_role(rid)
+                if role:
+                    menciones.append(role.mention)
+            if menciones:
+                staff_ping = " ".join(menciones)
 
-        await channel.send(
-            content=f"{self.user.mention} {staff_mentions}",
-            embed=embed,
-            view=TicketView(self.user.id, tipo, tipo_data)
-        )
+        await solicitudes_channel.send(content=staff_ping or None, embed=embed, view=view)
 
-        # Notificación pública
+        # Notificación pública de solicitud pendiente
         await send_public_notification(guild, self.user, tipo_data["label"], "pendiente")
 
-        await interaction.response.send_message("Ticket creado.", ephemeral=True)
+        await interaction.response.send_message(
+            "Tu solicitud ha sido enviada. El staff la revisará.",
+            ephemeral=True
+        )
 
 
 # ==========================
-# BOTONES DENTRO DEL TICKET
+# VISTA DEL TICKET (RECLAMAR / CERRAR)
 # ==========================
 
 class TicketView(View):
@@ -275,23 +453,17 @@ class TicketView(View):
         self.user_id = user_id
         self.tipo = tipo
         self.tipo_data = tipo_data
-        self.claimed_by = None
 
     @discord.ui.button(label="Reclamar", style=discord.ButtonStyle.primary)
-    async def claim(self, interaction: discord.Interaction, button: Button):
+    async def reclamar(self, interaction: discord.Interaction, button: Button):
         if not is_staff(interaction.user):
             return await interaction.response.send_message("No eres staff.", ephemeral=True)
 
-        if self.claimed_by:
-            return await interaction.response.send_message("Ya está reclamado.", ephemeral=True)
+        await interaction.response.send_message(
+            f"Ticket reclamado por {interaction.user.mention}.",
+            ephemeral=False
+        )
 
-        self.claimed_by = interaction.user.id
-        button.disabled = True
-        button.label = f"Reclamado por {interaction.user.display_name}"
-
-        await interaction.message.edit(view=self)
-
-        # Notificación pública
         await send_public_notification(
             interaction.guild,
             interaction.guild.get_member(self.user_id),
@@ -300,315 +472,50 @@ class TicketView(View):
             extra=interaction.user.mention
         )
 
-        await interaction.channel.send(
-            content=f"<@{self.user_id}> {interaction.user.mention}",
-            embed=discord.Embed(
-                title="Ticket reclamado",
-                description=f"Este ticket ha sido reclamado por {interaction.user.mention}",
-                color=discord.Color.orange()
-            )
-        )
-
-        await interaction.response.send_message("Reclamado.", ephemeral=True)
-
     @discord.ui.button(label="Cerrar ticket", style=discord.ButtonStyle.danger)
-    async def close(self, interaction: discord.Interaction, button: Button):
+    async def cerrar(self, interaction: discord.Interaction, button: Button):
         if not is_staff(interaction.user):
             return await interaction.response.send_message("No eres staff.", ephemeral=True)
 
-        modal = CloseModal(self.user_id, self.tipo_data)
+        modal = CloseModal(interaction.channel)
         await interaction.response.send_modal(modal)
 
 
 # ==========================
-# MODAL DE CIERRE
+# MODAL PARA CERRAR TICKET
 # ==========================
 
 class CloseModal(Modal):
-    def __init__(self, user_id, tipo_data):
+    def __init__(self, channel):
         super().__init__(title="Cerrar ticket")
-        self.user_id = user_id
-        self.tipo_data = tipo_data
-
-        self.reason = TextInput(label="Razón del cierre", style=discord.TextStyle.paragraph)
-        self.add_item(self.reason)
+        self.channel = channel
+        self.motivo = TextInput(label="Motivo del cierre", style=discord.TextStyle.paragraph)
+        self.add_item(self.motivo)
 
     async def on_submit(self, interaction: discord.Interaction):
-        guild = interaction.guild
-        user = guild.get_member(self.user_id)
-
-        # DM al usuario
-        try:
-            await user.send(
-                embed=discord.Embed(
-                    title=f"Tu ticket de {self.tipo_data['label']} ha sido cerrado",
-                    description=f"Razón: {self.reason.value}",
-                    color=discord.Color.red()
-                )
-            )
-        except:
-            pass
-
-        # Notificación pública
-        await send_public_notification(
-            guild,
-            user,
-            self.tipo_data["label"],
-            "rechazado",
-            extra=self.reason.value
-        )
-
-        # Mensaje en el canal
-        await interaction.channel.send(
-            content=f"{user.mention} {interaction.user.mention}",
-            embed=discord.Embed(
-                title="Ticket cerrado",
-                description=f"Razón: {self.reason.value}\nEl canal se eliminará en 5 segundos.",
-                color=discord.Color.red()
-            )
-        )
-
-        await interaction.response.send_message("Ticket cerrado.", ephemeral=True)
-
-        await asyncio.sleep(5)
-        await interaction.channel.delete() 
-
+        await interaction.response.send_message("Cerrando ticket...", ephemeral=True)
+        await asyncio.sleep(1)
+        await self.channel.delete()
 
 
 # ==========================
-# STAFF ROLES (OWNER ONLY)
+# SELECT DEL PANEL
 # ==========================
-
-@bot.tree.command(name="staff_roles", description="Gestiona los roles de staff")
-@owner_only()
-@app_commands.describe(
-    accion="Acción a realizar",
-    rol="Rol a añadir o eliminar"
-)
-@app_commands.choices(
-    accion=[
-        app_commands.Choice(name="Añadir", value="add"),
-        app_commands.Choice(name="Eliminar", value="remove"),
-        app_commands.Choice(name="Listar", value="list")
-    ]
-)
-async def staff_roles(interaction: discord.Interaction, accion: app_commands.Choice[str], rol: discord.Role = None):
-    staff = config.get("staff_roles", [])
-
-    if accion.value == "list":
-        if not staff:
-            return await interaction.response.send_message("No hay roles de staff configurados.", ephemeral=True)
-
-        roles = [interaction.guild.get_role(r).mention for r in staff if interaction.guild.get_role(r)]
-        return await interaction.response.send_message(
-            "Roles de staff:\n" + "\n".join(roles),
-            ephemeral=True
-        )
-
-    if not rol:
-        return await interaction.response.send_message("Debes seleccionar un rol.", ephemeral=True)
-
-    if accion.value == "add":
-        if rol.id in staff:
-            return await interaction.response.send_message("Ese rol ya es staff.", ephemeral=True)
-
-        staff.append(rol.id)
-        config["staff_roles"] = staff
-        save_config()
-        return await interaction.response.send_message(f"Rol {rol.mention} añadido como staff.", ephemeral=True)
-
-    if accion.value == "remove":
-        if rol.id not in staff:
-            return await interaction.response.send_message("Ese rol no es staff.", ephemeral=True)
-
-        staff.remove(rol.id)
-        config["staff_roles"] = staff
-        save_config()
-        return await interaction.response.send_message(f"Rol {rol.mention} eliminado del staff.", ephemeral=True)
-
-
-# ==========================
-# TICKET TYPES (OWNER ONLY)
-# ==========================
-
-@bot.tree.command(name="ticket_add", description="Añade un tipo de ticket")
-@owner_only()
-@app_commands.describe(
-    tipo="ID interno del tipo (ej: reporte)",
-    label="Nombre visible",
-    descripcion="Descripción del tipo",
-    emoji="Emoji del tipo"
-)
-async def ticket_add(interaction: discord.Interaction, tipo: str, label: str, descripcion: str, emoji: str):
-    tipo = tipo.lower()
-
-    config["ticket_types"][tipo] = {
-        "emoji": emoji,
-        "label": label,
-        "description": descripcion,
-        "fields": {}
-    }
-
-    save_config()
-    await interaction.response.send_message(f"Tipo **{label}** añadido correctamente.", ephemeral=True)
-
-
-@bot.tree.command(name="ticket_remove", description="Elimina un tipo de ticket")
-@owner_only()
-@app_commands.describe(tipo="Selecciona el tipo a eliminar")
-async def ticket_remove(interaction: discord.Interaction, tipo: str):
-    tipo = tipo.lower()
-
-    if tipo not in config["ticket_types"]:
-        return await interaction.response.send_message("Ese tipo no existe.", ephemeral=True)
-
-    del config["ticket_types"][tipo]
-    save_config()
-    await interaction.response.send_message(f"Tipo `{tipo}` eliminado.", ephemeral=True)
-
-
-@ticket_remove.autocomplete("tipo")
-async def ticket_remove_autocomplete(interaction: discord.Interaction, current: str):
-    current = current.lower()
-    return [
-        app_commands.Choice(name=data["label"], value=key)
-        for key, data in config["ticket_types"].items()
-        if current in key.lower() or current in data["label"].lower()
-    ][:25]
-
-
-# ==========================
-# TICKET FIELDS (OWNER ONLY)
-# ==========================
-
-@bot.tree.command(name="ticket_fields", description="Gestiona los campos del modal de un tipo de ticket")
-@owner_only()
-@app_commands.describe(
-    tipo="Tipo de ticket",
-    accion="Acción a realizar",
-    field="Nombre interno del campo",
-    nombre="Nombre visible del campo"
-)
-@app_commands.choices(
-    accion=[
-        app_commands.Choice(name="Añadir", value="add"),
-        app_commands.Choice(name="Editar", value="edit"),
-        app_commands.Choice(name="Eliminar", value="remove")
-    ]
-)
-async def ticket_fields(interaction: discord.Interaction, tipo: str, accion: app_commands.Choice[str], field: str, nombre: str = None):
-    tipo = tipo.lower()
-
-    if tipo not in config["ticket_types"]:
-        return await interaction.response.send_message("Ese tipo no existe.", ephemeral=True)
-
-    fields = config["ticket_types"][tipo]["fields"]
-
-    if accion.value in ("add", "edit"):
-        if not nombre:
-            return await interaction.response.send_message("Debes indicar un nombre visible.", ephemeral=True)
-
-        fields[field] = nombre
-        save_config()
-        return await interaction.response.send_message(f"Campo **{field}** actualizado.", ephemeral=True)
-
-    if accion.value == "remove":
-        if field not in fields:
-            return await interaction.response.send_message("Ese campo no existe.", ephemeral=True)
-
-        del fields[field]
-        save_config()
-        return await interaction.response.send_message(f"Campo **{field}** eliminado.", ephemeral=True)
-
-
-@ticket_fields.autocomplete("tipo")
-async def ticket_fields_tipo_autocomplete(interaction: discord.Interaction, current: str):
-    current = current.lower()
-    return [
-        app_commands.Choice(name=data["label"], value=key)
-        for key, data in config["ticket_types"].items()
-        if current in key.lower() or current in data["label"].lower()
-    ][:25]
-
-
-# ==========================
-# PANEL (OWNER ONLY)
-# ==========================
-
-@bot.tree.command(name="panel", description="Envía un panel de tickets editable")
-@owner_only()
-@app_commands.describe(
-    canal="Canal donde se enviará el panel",
-    titulo="Título del panel",
-    descripcion="Descripción del panel",
-    color="Color del embed (nombre o HEX)"
-)
-async def panel(interaction: discord.Interaction, canal: discord.TextChannel, titulo: str, descripcion: str, color: str):
-    config["panel"]["title"] = titulo
-    config["panel"]["description"] = descripcion
-    config["panel"]["color"] = color
-    save_config()
-
-    embed = discord.Embed(
-        title=titulo,
-        description=descripcion,
-        color=parse_color(color)
-    )
-
-    view = PanelView()
-    await canal.send(embed=embed, view=view)
-
-    await interaction.response.send_message("Panel enviado y guardado.", ephemeral=True) 
-# ==========================
-# PANEL CLEAR (OWNER ONLY)
-# ==========================
-
-@bot.tree.command(name="panel_clear", description="Elimina paneles antiguos")
-@owner_only()
-@app_commands.describe(
-    canal="Canal donde están los paneles",
-    limite="Cantidad de mensajes a revisar"
-)
-async def panel_clear(interaction: discord.Interaction, canal: discord.TextChannel, limite: int = 50):
-    borrados = 0
-
-    async for msg in canal.history(limit=limite):
-        if msg.author == interaction.client.user and msg.components:
-            try:
-                await msg.delete()
-                borrados += 1
-            except:
-                pass
-
-    await interaction.response.send_message(f"Paneles eliminados: **{borrados}**", ephemeral=True)
-
-
-
-
-# ==========================
-# PANEL VIEW (SELECT MENU)
-# ==========================
-
-class PanelView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-        options = []
-        for key, data in config["ticket_types"].items():
-            options.append(
-                discord.SelectOption(
-                    label=data["label"],
-                    value=key,
-                    description=data["description"],
-                    emoji=data["emoji"]
-                )
-            )
-
-        self.add_item(TicketSelect(options)) 
-
 
 class TicketSelect(discord.ui.Select):
-    def __init__(self, options):
+    def __init__(self):
+        tipos = get_ticket_types()
+
+        options = [
+            discord.SelectOption(
+                label=info["label"],
+                description=info.get("description", "Sin descripción"),
+                emoji=info.get("emoji", None),
+                value=tipo
+            )
+            for tipo, info in tipos.items()
+        ]
+
         super().__init__(
             placeholder="Selecciona un tipo de ticket",
             min_values=1,
@@ -618,33 +525,84 @@ class TicketSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         tipo = self.values[0]
-        data = config["ticket_types"][tipo]
-
-        # Reparar fields corruptos automáticamente
-        if isinstance(data.get("fields"), list):
-            data["fields"] = {}
-            save_config()
+        tipos = get_ticket_types()
+        data = tipos[tipo]
 
         modal = TicketModal(tipo, data, interaction.user)
         await interaction.response.send_modal(modal)
 
 
+class TicketPanel(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketSelect())
+
+
 # ==========================
-# EVENTO READY
+# COMANDO PARA ENVIAR PANEL
+# ==========================
+
+@bot.tree.command(name="panel", description="Enviar panel de tickets")
+@owner_only()
+async def panel(interaction: discord.Interaction):
+    panel_cfg = config["panel"]
+
+    embed = discord.Embed(
+        title=panel_cfg["title"],
+        description=panel_cfg["description"],
+        color=parse_color(panel_cfg["color"])
+    )
+
+    await interaction.response.send_message(
+        "Panel enviado.",
+        ephemeral=True
+    )
+
+    await interaction.channel.send(embed=embed, view=TicketPanel())
+
+
+# ==========================
+# COMANDOS DE CONFIGURACIÓN
+# ==========================
+
+@bot.tree.command(name="config_solicitudes", description="Configura el canal donde llegarán las solicitudes")
+@owner_only()
+async def config_solicitudes(interaction: discord.Interaction, canal: discord.TextChannel):
+    config["solicitudes_channel_id"] = canal.id
+    save_config()
+    await interaction.response.send_message(f"Canal de solicitudes configurado en {canal.mention}.", ephemeral=True)
+
+
+@bot.tree.command(name="config_notis", description="Configura el canal de notificaciones públicas")
+@owner_only()
+async def config_notis(interaction: discord.Interaction, canal: discord.TextChannel):
+    config["notify_channel_id"] = canal.id
+    save_config()
+    await interaction.response.send_message(f"Canal de notificaciones configurado en {canal.mention}.", ephemeral=True)
+
+
+@bot.tree.command(name="config_staff", description="Añadir rol staff")
+@owner_only()
+async def config_staff(interaction: discord.Interaction, rol: discord.Role):
+    if rol.id not in config["staff_roles"]:
+        config["staff_roles"].append(rol.id)
+        save_config()
+
+    await interaction.response.send_message(f"Rol {rol.mention} añadido como staff.", ephemeral=True)
+
+
+# ==========================
+# ON READY
 # ==========================
 
 @bot.event
 async def on_ready():
-    try:
-        await bot.tree.sync()
-    except Exception as e:
-        print("Error sincronizando comandos:", e)
-
-    print(f"Bot listo como {bot.user} ({bot.user.id})")
+    await bot.tree.sync()
+    print(f"Bot iniciado como {bot.user}")
 
 
 # ==========================
 # RUN
 # ==========================
 
-bot.run(TOKEN) 
+bot.run(TOKEN)
