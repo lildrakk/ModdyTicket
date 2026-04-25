@@ -29,9 +29,14 @@ def load_config():
         default = {
             "notify_channel_id": None,
             "staff_roles": [],
+            "panel": {
+                "title": "Centro de Tickets",
+                "description": "Selecciona un tipo de ticket",
+                "color": "blue"
+            },
             "ticket_types": {
                 "reporte": {
-                    "emoji": "🎫",
+                    "emoji": "🧾",
                     "label": "Reporte",
                     "description": "Reportar a un usuario",
                     "fields": {
@@ -41,20 +46,38 @@ def load_config():
                 }
             }
         }
+
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(default, f, indent=4, ensure_ascii=False)
+
         return default
 
+    # Si el archivo existe, cargarlo
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
 
+    # ==========================
+    # AUTOFIX: Reparar panel si no existe
+    # ==========================
+    if "panel" not in cfg:
+        cfg["panel"] = {
+            "title": "Centro de Tickets",
+            "description": "Selecciona un tipo de ticket",
+            "color": "blue"
+        }
 
-def save_config():
+    # ==========================
+    # AUTOFIX: Reparar fields corruptos
+    # ==========================
+    for tipo, info in cfg.get("ticket_types", {}).items():
+        if isinstance(info.get("fields"), list):
+            info["fields"] = {}
+
+    # Guardar reparaciones si hubo cambios
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=4, ensure_ascii=False)
+        json.dump(cfg, f, indent=4, ensure_ascii=False)
 
-
-config = load_config()
+    return cfg 
 
 
 # ==========================
